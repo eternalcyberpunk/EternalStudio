@@ -1,0 +1,46 @@
+name: Extract TAR Archive
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'eternalnode-studio.tar'
+
+jobs:
+  extract-and-commit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract TAR archive
+        run: |
+          cd ${{ github.workspace }}
+          tar -xf eternalnode-studio.tar
+          echo "TAR extraction completed"
+
+      - name: Check for changes
+        id: check-changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit extracted files
+        if: steps.check-changes.outputs.has-changes == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "Extract eternalnode-studio.tar contents"
+          git push
+
+      - name: No changes to commit
+        if: steps.check-changes.outputs.has-changes == 'false'
+        run: |
+          echo "No new files extracted or all files already exist"
