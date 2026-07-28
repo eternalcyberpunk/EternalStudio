@@ -1,0 +1,2464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#07080b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="EternalNode Studio — timeline editing, node compositing, 3D and AI-assisted creation in one connected environment.">
+<title>EternalNode Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================================
+   EternalNode Studio — HTML build
+   Design system. Near-black ground, graphite panels, hairline borders.
+   Neon is spent only on state: active tool, selection, data flow, playhead.
+   Layout is one grid that reflows across three breakpoints; nothing is hidden
+   on small screens, it just changes shape.
+   ========================================================================= */
+:root{
+  --bg:#07080b; --panel:#0d0f14; --panel-2:#11141c; --panel-3:#161a24;
+  --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.15);
+  --text:#dde5f0; --muted:#79839a;
+  --cyan:#22e4f5; --purple:#a855f7; --pink:#ff2d8a;
+  --p-video:#22e4f5; --p-audio:#5ef2a4; --p-geo:#a855f7; --p-anim:#ffb347; --p-ai:#ff2d8a; --p-val:#7c8798;
+  --r1:5px; --r2:8px; --r3:12px; --r4:18px;
+  --t-hover:120ms; --t-ui:200ms; --t-ws:320ms; --ease:cubic-bezier(.22,.61,.28,1);
+  --f-display:'Chakra Petch',system-ui,sans-serif;
+  --f-body:'Inter',system-ui,-apple-system,sans-serif;
+  --f-mono:'JetBrains Mono',ui-monospace,monospace;
+  --left:268px; --right:296px; --bottom:280px;
+  --tap:34px;                     /* pointer target; grows to 44px on touch */
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-t:env(safe-area-inset-top,0px);
+}
+@media (pointer:coarse){ :root{ --tap:44px } }
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overscroll-behavior:none}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--f-body);font-size:13px;
+  -webkit-font-smoothing:antialiased;overflow:hidden;touch-action:manipulation;
+}
+button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:1px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#212734;border-radius:9px}
+::-webkit-scrollbar-track{background:transparent}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+[hidden]{display:none!important}
+
+/* ------------------------------------------------------------------ shell */
+.app{display:grid;grid-template-rows:auto 1fr auto;height:100dvh;padding-top:var(--safe-t)}
+
+.titlebar{
+  display:flex;align-items:center;gap:16px;height:52px;padding:0 12px;flex:none;
+  background:linear-gradient(180deg,#0f1219,#0a0c11);border-bottom:1px solid var(--line);
+}
+.brand{display:flex;align-items:center;gap:9px;flex:none}
+.mark{width:22px;height:22px;border-radius:6px;flex:none;
+  background:conic-gradient(from 210deg,var(--cyan),var(--purple),var(--pink),var(--cyan));
+  box-shadow:0 0 14px rgba(34,228,245,.35)}
+.brand b{display:block;font-family:var(--f-display);font-size:14px;letter-spacing:.04em;font-weight:600}
+.brand .tl{display:block;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}
+
+.wsbar{display:flex;gap:2px;padding:3px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r2)}
+.ws{padding:6px 13px;background:none;border:0;border-radius:var(--r1);color:var(--muted);
+  font-family:var(--f-display);font-size:12px;letter-spacing:.06em;
+  transition:color var(--t-hover) var(--ease),background var(--t-hover) var(--ease)}
+.ws:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.ws.on{color:#061014;background:var(--cyan);box-shadow:0 0 16px rgba(34,228,245,.25)}
+.ws.soon{opacity:.55}
+
+.tools{display:flex;gap:6px;margin-left:auto;align-items:center}
+
+.statusbar{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  height:26px;padding:0 12px;flex:none;background:var(--panel);border-top:1px solid var(--line);
+  font-size:11px;color:var(--muted)}
+.statusbar .stats{display:flex;gap:14px}
+
+/* ------------------------------------------------------------------ stage */
+.stage{display:flex;min-height:0}
+.panel.left{width:var(--left);flex:none}
+.panel.right{width:var(--right);flex:none}
+.center{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg)}
+.top{flex:1;min-height:0;display:flex}
+.bottom{flex:none;display:flex;flex-direction:column;min-height:0;
+  height:var(--bottom);border-top:1px solid var(--line);background:var(--panel)}
+.grip{flex:none;height:6px;cursor:row-resize;background:transparent;transition:background var(--t-hover)}
+.grip:hover,.grip.drag{background:rgba(34,228,245,.35)}
+.vgrip{width:5px;cursor:col-resize;background:transparent;transition:background var(--t-hover)}
+.vgrip:hover{background:rgba(34,228,245,.35)}
+
+/* ----------------------------------------------------------------- panels */
+.panel{display:flex;flex-direction:column;min-height:0;background:var(--panel);border-right:1px solid var(--line)}
+.panel.right{border-right:0;border-left:1px solid var(--line)}
+.tabs{display:flex;flex:none;border-bottom:1px solid var(--line)}
+.tab{flex:1;padding:9px 4px;background:none;border:0;border-bottom:2px solid transparent;
+  color:var(--muted);font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  transition:color var(--t-hover) var(--ease),border-color var(--t-hover) var(--ease)}
+.tab:hover{color:var(--text)}
+.tab.on{color:var(--cyan);border-bottom-color:var(--cyan)}
+.body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:12px;display:flex;flex-direction:column;gap:8px}
+.eyebrow{display:block;margin:10px 0 2px;font-size:9px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--muted)}
+.eyebrow:first-child{margin-top:0}
+.head{flex:none;padding:11px 12px 9px;border-bottom:1px solid var(--line)}
+.head h3{margin:2px 0 0;font-family:var(--f-display);font-size:14px;font-weight:600}
+
+/* --------------------------------------------------------------- controls */
+.btn{min-height:var(--tap);padding:0 12px;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:var(--r1);font-size:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  transition:transform var(--t-hover) var(--ease),border-color var(--t-hover) var(--ease)}
+.btn:hover:not(:disabled){border-color:var(--line-2);transform:translateY(-1px)}
+.btn:disabled{opacity:.38;cursor:default}
+.btn.ghost{background:transparent}
+.btn.primary{background:var(--cyan);border-color:transparent;color:#04121a;font-weight:600}
+.btn.primary:hover:not(:disabled){box-shadow:0 0 18px rgba(34,228,245,.35)}
+.btn.wide{width:100%}
+.btn.wrap{white-space:normal;text-align:left;justify-content:flex-start;line-height:1.45;padding:9px 11px;min-height:0}
+.chip{min-height:28px;padding:0 10px;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:999px;font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:5px;
+  transition:color var(--t-hover) var(--ease),border-color var(--t-hover) var(--ease)}
+@media (pointer:coarse){.chip{min-height:34px;padding:0 13px}}
+.chip:hover:not(:disabled){color:var(--text);border-color:var(--line-2)}
+.chip:disabled{opacity:.35;cursor:default}
+.chip.on{color:var(--cyan);border-color:rgba(34,228,245,.55);background:rgba(34,228,245,.08)}
+.chip.accent{color:var(--cyan);border-color:rgba(34,228,245,.4)}
+.ico{width:var(--tap);height:var(--tap);display:grid;place-items:center;background:var(--panel-2);
+  border:1px solid var(--line);border-radius:var(--r1);font-size:13px;
+  transition:border-color var(--t-hover) var(--ease)}
+.ico:hover{border-color:var(--line-2)}
+.ico.on{color:var(--cyan);border-color:rgba(34,228,245,.5)}
+.ico.play{background:var(--cyan);color:#04121a;border-color:transparent}
+.ico.tiny{width:22px;height:22px;font-size:10px}
+.input,.select{width:100%;min-height:30px;padding:5px 8px;background:var(--panel-2);
+  border:1px solid var(--line);border-radius:var(--r1);font-size:12px}
+.select{width:auto}
+.num{font-family:var(--f-mono);font-size:11px;padding:4px 6px;min-height:28px}
+input[type=range]{width:100%;height:22px;appearance:none;background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:3px;
+  background:linear-gradient(90deg,rgba(34,228,245,.55),rgba(168,85,247,.35))}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;margin-top:-6px;
+  border-radius:50%;background:var(--text);border:2px solid #05070a;
+  transition:transform var(--t-hover) var(--ease)}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.15)}
+input[type=range]::-moz-range-track{height:3px;border-radius:3px;background:rgba(34,228,245,.5)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border:2px solid #05070a;border-radius:50%;background:var(--text)}
+input[type=color]{width:36px;height:26px;padding:0;background:none;border:1px solid var(--line);border-radius:4px}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--cyan)}
+.field{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted)}
+.field.row{flex-direction:row;align-items:center;justify-content:space-between}
+.rowx{display:flex;gap:6px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.hint{margin:2px 0;color:var(--muted);font-size:11px;line-height:1.6}
+.err{color:var(--pink);font-size:11px}
+.tag{padding:1px 6px;border-radius:999px;font-size:9px;letter-spacing:.08em;text-transform:uppercase}
+.tag.plan{background:rgba(168,85,247,.16);color:#c9a6ff}
+.tag.warn{background:rgba(255,45,138,.16);color:#ff9dc4}
+.tc{font-family:var(--f-mono);font-size:12px;letter-spacing:.03em}
+.tc.dim{color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+
+/* -------------------------------------------------------------------- bin */
+.bin{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.bin li{display:flex;gap:9px;padding:6px;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:var(--r2);transition:border-color var(--t-hover) var(--ease),transform var(--t-hover) var(--ease)}
+.bin li:hover{border-color:rgba(34,228,245,.45);transform:translateY(-1px)}
+.bin li.sel{border-color:rgba(34,228,245,.6);background:rgba(34,228,245,.07)}
+.thumb{width:58px;height:34px;flex:none;display:grid;place-items:center;background:#05070a;
+  border-radius:4px;overflow:hidden;color:var(--muted);font-size:11px}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.meta{min-width:0;display:flex;flex-direction:column;gap:2px;justify-content:center}
+.meta b{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta span{font-size:10px;color:var(--muted)}
+.meta .add{margin-top:3px;align-self:flex-start}
+.row-item{display:flex;align-items:center;gap:8px;padding:6px 7px;border:1px solid transparent;
+  border-radius:var(--r1);font-size:12px;min-height:var(--tap)}
+.row-item:hover{background:rgba(255,255,255,.03)}
+.row-item.sel{border-color:rgba(34,228,245,.45);background:rgba(34,228,245,.07)}
+.row-item .ico{margin-left:auto}
+
+/* --------------------------------------------------------------- viewport */
+.viewport{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
+.stagearea{position:relative;flex:1;min-height:0;display:grid;place-items:center;padding:12px;
+  background:radial-gradient(circle at 50% 40%,#0d1017,#06070a 70%)}
+#glcanvas{max-width:100%;max-height:100%;border-radius:var(--r2);border:1px solid var(--line);
+  box-shadow:0 24px 60px rgba(0,0,0,.55);background:#000;display:block}
+.vp-err{position:absolute;left:12px;right:12px;bottom:12px;padding:10px 12px;font-size:11px;
+  background:rgba(255,45,138,.1);border:1px solid rgba(255,45,138,.4);border-radius:var(--r2)}
+.transport{display:flex;align-items:center;gap:10px;padding:7px 10px;flex:none;
+  border-top:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+.transport .grp{display:flex;gap:5px;align-items:center}
+.transport .grp.end{margin-left:auto}
+#scrub{width:100%;height:20px;margin:0}
+
+/* --------------------------------------------------------------- timeline */
+.timeline{display:flex;flex-direction:column;flex:1;min-height:0}
+.tbar{display:flex;align-items:center;gap:6px;padding:6px 8px;flex:none;
+  border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.tbar::-webkit-scrollbar{display:none}
+.tbody{display:flex;flex:1;min-height:0}
+.heads{flex:none;width:150px;background:var(--panel-2);border-right:1px solid var(--line);overflow:hidden}
+.corner{height:28px;border-bottom:1px solid var(--line)}
+.thead{display:flex;align-items:center;gap:7px;padding:0 8px;border-bottom:1px solid var(--line);font-size:11px}
+.thead b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flags{margin-left:auto;display:flex;gap:3px}
+.flag{width:22px;height:22px;background:none;border:1px solid var(--line);border-radius:4px;
+  color:var(--muted);font-size:10px;display:grid;place-items:center}
+.flag.off{color:var(--pink);border-color:rgba(255,45,138,.4)}
+.lanes{flex:1;min-width:0;overflow:auto;-webkit-overflow-scrolling:touch}
+.scrollw{position:relative;min-height:100%}
+.ruler{position:sticky;top:0;z-index:3;height:28px;background:var(--panel-2);
+  border-bottom:1px solid var(--line);touch-action:none}
+.tick{position:absolute;top:0;bottom:0;border-left:1px solid var(--line);padding-left:5px;
+  display:flex;align-items:center;font-family:var(--f-mono);font-size:9px;color:var(--muted);pointer-events:none}
+.mk{position:absolute;bottom:0;width:2px;height:11px;border-radius:1px}
+.lane{position:relative;border-bottom:1px solid var(--line);
+  background:repeating-linear-gradient(90deg,rgba(255,255,255,.016) 0 1px,transparent 1px 90px)}
+.lane.hid{opacity:.4}
+.clip{position:absolute;top:5px;bottom:5px;border-radius:var(--r1);overflow:hidden;
+  background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03));
+  border:1px solid var(--line-2);border-left:3px solid var(--acc,var(--cyan));touch-action:none;
+  transition:top var(--t-hover) var(--ease),bottom var(--t-hover) var(--ease),box-shadow var(--t-hover) var(--ease)}
+.clip.sel{top:2px;bottom:2px;border-color:var(--acc);box-shadow:0 0 0 1px var(--acc),0 6px 20px rgba(0,0,0,.5)}
+.clip .lbl{display:flex;justify-content:space-between;gap:8px;padding:4px 9px;pointer-events:none}
+.clip .lbl b{font-weight:500;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clip .lbl span{font-family:var(--f-mono);font-size:9px;color:var(--muted)}
+.h{position:absolute;top:0;bottom:0;width:10px;z-index:2;touch-action:none}
+@media (pointer:coarse){.h{width:18px}}
+.h.l{left:0;cursor:ew-resize}.h.r{right:0;cursor:ew-resize}
+.h:hover{background:rgba(34,228,245,.28)}
+.wave{position:absolute;left:4px;right:4px;bottom:4px;height:46%;display:flex;align-items:flex-end;
+  gap:1px;opacity:.55;pointer-events:none}
+.wave i{flex:1;background:var(--p-audio);border-radius:1px;transform-origin:bottom}
+.wave.play i{animation:wv .9s ease-in-out infinite alternate}
+@keyframes wv{from{transform:scaleY(.5)}to{transform:scaleY(1)}}
+.ph{position:absolute;top:0;bottom:0;width:1px;background:var(--pink);z-index:4;pointer-events:none;
+  box-shadow:0 0 10px rgba(255,45,138,.55)}
+.ph i{position:absolute;top:0;left:-5px;width:11px;height:11px;background:var(--pink);
+  clip-path:polygon(0 0,100% 0,50% 100%)}
+.snapline{position:absolute;top:0;bottom:0;width:1px;background:var(--cyan);z-index:3;pointer-events:none}
+
+/* ------------------------------------------------------------------ nodes */
+.nodes{position:relative;display:flex;flex-direction:column;flex:1;min-height:0}
+.nbar{display:flex;align-items:center;gap:6px;padding:6px 8px;flex:none;border-bottom:1px solid var(--line);
+  overflow-x:auto;scrollbar-width:none}
+.nbar::-webkit-scrollbar{display:none}
+.gstat{margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}
+.gstat.live{color:var(--cyan)}
+#nodesvg{flex:1;min-height:0;width:100%;background:#080a0e;touch-action:none;display:block}
+.nbody{fill:rgba(18,21,29,.96);stroke:rgba(255,255,255,.09)}
+.node.sel .nbody{filter:drop-shadow(0 0 10px rgba(34,228,245,.28))}
+.node.byp{opacity:.45}
+.ntitle{fill:var(--text);font-family:var(--f-display);font-size:12px;user-select:none}
+.nbadge{fill:#c9a6ff;font-size:8px;letter-spacing:.1em}
+.port{cursor:crosshair}
+.plabel{fill:var(--muted);font-size:10px;pointer-events:none}
+.wire{fill:none;stroke-width:2;opacity:.92}
+.wire.video{stroke-dasharray:12 6;animation:flow .9s linear infinite}
+.wire.audio{stroke-dasharray:2 4;stroke-width:2.5}
+.wire.geometry{stroke-dasharray:14 3 3 3}
+.wire.anim{stroke-width:1.2;animation:pul 1.6s ease-in-out infinite}
+.wire.ai{stroke-dasharray:1 7;stroke-linecap:round;stroke-width:3;animation:flow 1.4s linear infinite}
+.wire.pend{stroke-dasharray:4 4;opacity:.6}
+@keyframes flow{to{stroke-dashoffset:-18}}
+@keyframes pul{50%{opacity:.4}}
+.palette{position:absolute;top:44px;left:10px;z-index:6;width:min(300px,calc(100% - 20px));
+  background:var(--panel-3);border:1px solid var(--line-2);border-radius:var(--r3);overflow:hidden;
+  box-shadow:0 24px 60px rgba(0,0,0,.6);animation:rise var(--t-ui) var(--ease)}
+.palette input{width:100%;padding:11px 13px;background:transparent;border:0;border-bottom:1px solid var(--line);font-size:13px}
+.plist{max-height:46vh;overflow-y:auto}
+.pitem{display:flex;align-items:center;gap:9px;width:100%;padding:10px 13px;background:none;border:0;
+  text-align:left;min-height:var(--tap)}
+.pitem:hover{background:rgba(34,228,245,.08)}
+.pitem span.cat{margin-left:auto;font-size:10px;color:var(--muted)}
+@keyframes rise{from{opacity:0;transform:translateY(-6px)}}
+
+/* --------------------------------------------------------------------- 3D */
+.vp3{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
+.vp3 .bar{display:flex;gap:14px;padding:6px 8px;flex:none;background:var(--panel);
+  border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.vp3 .bar::-webkit-scrollbar{display:none}
+.grp3{display:flex;gap:5px;flex:none}
+#c3d{flex:1;min-height:0;width:100%;display:block;touch-action:none;background:#0a0b0f}
+.vp3 .foot{display:flex;gap:16px;padding:6px 10px;flex:none;border-top:1px solid var(--line);
+  font-size:11px;color:var(--muted);overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+
+/* ----------------------------------------------------------- graph editor */
+.geditor{position:relative;display:flex;flex:none;height:180px;border-bottom:1px solid var(--line);background:#0a0c11}
+.chans{width:168px;flex:none;padding:8px;border-right:1px solid var(--line);overflow-y:auto}
+.chan{display:flex;align-items:center;gap:7px;width:100%;padding:6px 7px;margin-bottom:3px;
+  background:none;border:1px solid transparent;border-radius:var(--r1);font-size:11px;min-height:30px}
+.chan.on{border-color:rgba(255,179,71,.5);background:rgba(255,179,71,.08)}
+.chan i{width:6px;height:6px;border-radius:50%;background:var(--p-anim);flex:none}
+.chan span{margin-left:auto;font-family:var(--f-mono);color:var(--muted)}
+#gsvg{flex:1;min-width:0;touch-action:none}
+.gline{stroke:rgba(255,255,255,.05)}
+.curve{fill:none;stroke:var(--p-anim);stroke-width:1.8}
+.key{fill:#0a0c11;stroke:var(--p-anim);stroke-width:2;cursor:grab}
+.key.on{fill:var(--p-anim)}
+.gph{stroke:var(--pink);stroke-width:1}
+
+/* ----------------------------------------------------------------- params */
+.param{display:flex;flex-direction:column;gap:3px}
+.param .ph2{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted)}
+.param .val{font-family:var(--f-mono);color:var(--text)}
+.rt{display:flex;align-items:center;gap:6px}
+.sw{background:none;border:0;color:var(--muted);font-size:11px;padding:2px 4px;
+  transition:color var(--t-hover) var(--ease),transform var(--t-hover) var(--ease)}
+.sw:hover{color:var(--text);transform:scale(1.2)}
+.sw.on{color:var(--p-anim)}
+.vec{display:flex;align-items:center;gap:4px}
+.vec b{width:52px;font-weight:400;font-size:11px;color:var(--muted)}
+
+/* ----------------------------------------------------------------- modals */
+.modal{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:14px;
+  background:rgba(4,5,8,.74);backdrop-filter:blur(6px);animation:fade var(--t-ui) var(--ease)}
+@keyframes fade{from{opacity:0}}
+.sheetbox{width:min(720px,100%);max-height:88dvh;overflow:auto;background:var(--panel-3);
+  border:1px solid var(--line-2);border-radius:var(--r3);box-shadow:0 40px 90px rgba(0,0,0,.7);
+  animation:rise var(--t-ui) var(--ease)}
+.mhead{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;border-bottom:1px solid var(--line)}
+.mhead h2{margin:0;font-family:var(--f-display);font-size:16px}
+.cmd-mark{font-family:var(--f-display);font-size:15px;letter-spacing:.16em;color:var(--pink)}
+.cmd-sub{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+#cmdinput{width:100%;padding:15px;background:transparent;border:0;border-bottom:1px solid var(--line);
+  font-family:var(--f-display);font-size:clamp(15px,4vw,18px)}
+.sugg{display:flex;flex-wrap:wrap;gap:6px;padding:13px 15px}
+.sugg button{padding:8px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;
+  font-size:11px;color:var(--muted);text-align:left}
+.sugg button:hover{color:var(--text);border-color:rgba(255,45,138,.5)}
+.plan{padding:13px 15px}
+.plan ol{margin:8px 0 14px;padding-left:18px;font-size:12px;line-height:1.9;color:var(--muted)}
+.mfoot{margin:0;padding:10px 15px;border-top:1px solid var(--line);font-size:10px;line-height:1.6;color:var(--muted)}
+.exbody{display:grid;grid-template-columns:250px 1fr}
+.presets{padding:12px;border-right:1px solid var(--line);max-height:56dvh;overflow-y:auto}
+.preset{display:flex;flex-direction:column;gap:2px;width:100%;padding:9px 10px;margin-bottom:5px;
+  background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r2);text-align:left}
+.preset span{font-size:10px;color:var(--muted)}
+.preset.on{border-color:rgba(34,228,245,.55);background:rgba(34,228,245,.07)}
+.preset.plan{opacity:.55;cursor:default}
+.exset{display:flex;flex-direction:column;gap:12px;padding:14px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin:0}
+.stats div{display:flex;justify-content:space-between;gap:8px;padding-bottom:4px;border-bottom:1px dashed var(--line)}
+.stats dt{font-size:11px;color:var(--muted)}
+.stats dd{margin:0;font-family:var(--f-mono);font-size:11px}
+.bar2{height:4px;background:var(--panel-2);border-radius:3px;overflow:hidden}
+.bar2 i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cyan),var(--purple));
+  transition:width var(--t-ui) var(--ease)}
+.exact{display:flex;gap:8px;justify-content:flex-end}
+
+.planned{margin:auto;max-width:520px;padding:28px;text-align:center}
+.planned h2{font-family:var(--f-display);font-size:18px;margin:0 0 10px}
+.planned p{color:var(--muted);line-height:1.7;font-size:12px}
+.planned code{font-family:var(--f-mono);color:var(--cyan)}
+
+.toast{position:fixed;left:50%;bottom:calc(70px + var(--safe-b));transform:translateX(-50%);z-index:70;
+  padding:9px 15px;background:var(--panel-3);border:1px solid var(--line-2);border-radius:999px;
+  font-size:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);animation:rise var(--t-ui) var(--ease);pointer-events:none}
+
+/* ---------------------------------------------------------- mobile shell */
+.mobnav{display:none;flex:none;background:var(--panel);border-top:1px solid var(--line);
+  padding-bottom:var(--safe-b)}
+.mobnav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 6px;
+  background:none;border:0;color:var(--muted);font-size:9px;letter-spacing:.07em;text-transform:uppercase}
+.mobnav button i{font-size:16px;line-height:1;font-style:normal}
+.mobnav button.on{color:var(--cyan)}
+.sheetbtn{display:none}
+
+/* Tablet: the inspector becomes an overlay so the viewport keeps its width. */
+@media (max-width:1180px){
+  :root{--left:236px}
+  .panel.right{position:fixed;top:0;right:0;bottom:0;width:min(330px,86vw);z-index:50;
+    transform:translateX(100%);transition:transform var(--t-ws) var(--ease);
+    box-shadow:-20px 0 60px rgba(0,0,0,.6);padding-top:var(--safe-t);padding-bottom:var(--safe-b)}
+  .panel.right.open{transform:none}
+  .vgrip.r{display:none}
+  .sheetbtn{display:inline-flex}
+  .brand .tl{display:none}
+}
+
+/* Phone: single column, bottom navigation, panels as sheets. */
+@media (max-width:760px){
+  .panel.left{position:fixed;top:0;left:0;bottom:0;width:min(320px,88vw);z-index:50;
+    transform:translateX(-100%);transition:transform var(--t-ws) var(--ease);
+    box-shadow:20px 0 60px rgba(0,0,0,.6);padding-top:var(--safe-t);padding-bottom:var(--safe-b)}
+  .panel.left.open{transform:none}
+  .vgrip{display:none}
+  .wsbar{display:none}
+  .mobnav{display:flex}
+  .titlebar{height:48px;gap:8px}
+  .brand b{font-size:13px}
+  .grip{display:none}
+  .bottom{height:auto;flex:1}
+  /* On phones the centre shows one region at a time, chosen by the nav. */
+  .center.m-view .bottom,.center.m-view .geditor{display:none}
+  .center.m-edit .top{display:none}
+  .center.m-edit .bottom{flex:1}
+  .statusbar .stats span:nth-child(-n+3){display:none}
+  .exbody{grid-template-columns:1fr}
+  .presets{border-right:0;border-bottom:1px solid var(--line);max-height:34dvh}
+  .heads{width:112px}
+  .hide-sm{display:none!important}
+  .chans{width:132px}
+  .geditor{height:150px}
+  .transport{gap:6px}
+  .modal{padding:0;place-items:end center}
+  .sheetbox{border-radius:var(--r4) var(--r4) 0 0;max-height:92dvh;
+    padding-bottom:var(--safe-b);animation:up var(--t-ws) var(--ease)}
+  @keyframes up{from{transform:translateY(40px);opacity:0}}
+}
+@media (max-width:400px){
+  .brand b{display:none}
+  .heads{width:96px}
+}
+/* Short landscape phones: give the viewport everything it can get. */
+@media (max-height:520px) and (orientation:landscape){
+  .titlebar{height:42px}
+  .geditor{height:132px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="titlebar">
+    <button class="ico sheetbtn" data-act="sheet" data-side="left" aria-label="Project panel">▤</button>
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div><b>EternalNode Studio</b><i class="tl">Edit Reality. Build Worlds.</i></div>
+    </div>
+    <nav class="wsbar" id="wsbar"></nav>
+    <div class="tools">
+      <button class="btn ghost" data-act="cmd" title="⌘K">✦<span class="hide-sm"> E.L.A.I.N.E.</span></button>
+      <button class="ico" data-act="undo" title="Undo (⌘Z)">↶</button>
+      <button class="ico" data-act="redo" title="Redo (⇧⌘Z)">↷</button>
+      <button class="btn ghost hide-sm" data-act="open">Open</button>
+      <button class="btn ghost hide-sm" data-act="save" title="⌘S">Save</button>
+      <button class="btn primary" data-act="export">Export</button>
+      <button class="ico sheetbtn" data-act="sheet" data-side="right" aria-label="Inspector">⚙</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <aside class="panel left" id="pLeft">
+      <nav class="tabs" id="binTabs"></nav>
+      <div class="body" id="binBody"></div>
+    </aside>
+    <div class="vgrip" id="gripL" title="Resize"></div>
+
+    <section class="center" id="center">
+      <div class="top" id="top">
+        <div class="viewport" id="vpVideo">
+          <div class="stagearea"><canvas id="glcanvas"></canvas><div class="vp-err" id="vpErr" hidden></div></div>
+          <div class="transport">
+            <div class="grp">
+              <button class="ico" data-act="step" data-n="-1" aria-label="Back one frame">⟨</button>
+              <button class="ico play" data-act="play" id="playBtn" aria-label="Play">▶</button>
+              <button class="ico" data-act="step" data-n="1" aria-label="Forward one frame">⟩</button>
+              <button class="ico" data-act="loop" id="loopBtn" aria-label="Loop">↻</button>
+            </div>
+            <div class="grp"><span class="tc" id="tcNow">00:00:00:00</span><span class="tc dim" id="tcEnd">/ 00:01:00:00</span></div>
+            <div class="grp end">
+              <button class="chip" data-act="guides" id="guideBtn">Guides</button>
+              <select class="select" id="qualitySel" aria-label="Preview quality">
+                <option value="1080">Full</option><option value="720" selected>Half</option><option value="480">Quarter</option>
+              </select>
+            </div>
+          </div>
+          <input type="range" id="scrub" min="0" max="60" step="0.01" value="0" aria-label="Scrub">
+        </div>
+
+        <div class="vp3" id="vp3d" hidden>
+          <div class="bar" id="bar3d"></div>
+          <canvas id="c3d"></canvas>
+          <div class="foot" id="foot3d"></div>
+        </div>
+
+        <div class="planned" id="vpPlanned" hidden>
+          <h2>Material workspace</h2>
+          <p>Shader graphs share the same node registry as the compositor, so the material editor is this
+             canvas with a different node set. Base colour, metallic, roughness and emission are editable
+             today in the Inspector whenever a 3D object is selected.</p>
+          <p class="hint">Planned: procedural texture nodes, colour ramps, normal and height inputs.</p>
+        </div>
+      </div>
+
+      <div class="grip" id="gripB" title="Resize"></div>
+
+      <div class="bottom" id="bottom">
+        <div class="geditor" id="geditor" hidden>
+          <div class="chans" id="chans"></div>
+          <svg id="gsvg"></svg>
+        </div>
+
+        <div class="timeline" id="timeline">
+          <div class="tbar" id="tbar"></div>
+          <div class="tbody">
+            <div class="heads" id="heads"></div>
+            <div class="lanes" id="lanes"><div class="scrollw" id="scrollw"></div></div>
+          </div>
+        </div>
+
+        <div class="nodes" id="nodes" hidden>
+          <div class="nbar" id="nbar"></div>
+          <svg id="nodesvg"></svg>
+          <div id="palette"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="vgrip r" id="gripR" title="Resize"></div>
+    <aside class="panel right" id="pRight">
+      <div class="head"><span class="eyebrow">Inspector</span><h3 id="inspTitle">Nothing selected</h3></div>
+      <div class="body" id="inspBody"></div>
+    </aside>
+  </main>
+
+  <nav class="mobnav" id="mobnav"></nav>
+
+  <footer class="statusbar">
+    <span id="statusMsg">Ready</span>
+    <span class="stats" id="statusStats"></span>
+  </footer>
+</div>
+
+<div id="modals"></div>
+<div id="toasts"></div>
+<input type="file" id="fileInput" accept="video/*,audio/*,image/*" multiple hidden>
+<input type="file" id="projInput" accept=".json,application/json" hidden>
+
+<script>
+'use strict';
+/* ===========================================================================
+   EternalNode Studio — HTML build
+   One file, no dependencies, no build step. The module layout of the desktop
+   source is preserved as sections below:
+     core/ · media/ · timeline/ · nodes/ · video/ · threeD/ · animation/ ·
+     ai/ · renderer/ · ui/
+   Three rules hold the design together:
+     1. One document. Clips, nodes, keyframes and 3D objects share one state.
+     2. One mutation path — edit() — so undo, autosave and dirty tracking are free.
+     3. The timeline never depends on the graph; the graph is depth you opt into.
+   ======================================================================== */
+
+/* --------------------------------------------------------------- core/utils */
+const $ = (s, r = document) => r.querySelector(s);
+const uid = (p = 'id') => p + '_' + Math.random().toString(36).slice(2, 9);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const p2 = n => String(n).padStart(2, '0');
+const timecode = (s, fps = 30) => { s = Math.max(0, s);
+  return p2(s/3600|0)+':'+p2(s%3600/60|0)+':'+p2(s%60|0)+':'+p2((s%1)*fps|0); };
+const snapFrame = (t, fps) => Math.round(t * fps) / fps;
+const hexRGB = h => { h = h.replace('#',''); if (h.length===3) h = h.split('').map(c=>c+c).join('');
+  const n = parseInt(h,16); return [(n>>16&255)/255,(n>>8&255)/255,(n&255)/255]; };
+const fmtBytes = b => b<1024 ? b+' B' : b<1048576 ? (b/1024).toFixed(1)+' KB'
+  : b<1073741824 ? (b/1048576).toFixed(1)+' MB' : (b/1073741824).toFixed(2)+' GB';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+/* structuredClone is missing on iOS Safari before 15.4 and old WebViews; the
+   project document is plain JSON, so a JSON round-trip is an exact fallback. */
+const deepClone = typeof structuredClone === 'function' ? structuredClone : (o => JSON.parse(JSON.stringify(o)));
+const isPhone = () => matchMedia('(max-width:760px)').matches;
+const isTablet = () => matchMedia('(max-width:1180px)').matches;
+
+/* ------------------------------------------------------------- core/project */
+const FORMAT = 1, AUTOSAVE = 'eternalnode.autosave.v1', LAYOUT = 'eternalnode.layout.v1';
+
+function mkTrack(kind, name, height) {
+  return { id: uid('trk'), kind, name, height: height || 58, muted:false, locked:false, hidden:false, clips:[] };
+}
+function createProject(name) {
+  const now = Date.now();
+  return {
+    meta: { id: uid('prj'), name: name || 'Untitled Project', fps:30, width:1920, height:1080,
+            duration:60, createdAt:now, modifiedAt:now, formatVersion:FORMAT },
+    media: [],
+    tracks: [ mkTrack('text','Titles',46), mkTrack('object3d','3D Layer',46),
+              mkTrack('video','Video 2'), mkTrack('video','Video 1'), mkTrack('audio','Audio 1',52) ],
+    markers: [],
+    graph: { nodes: [], edges: [] },
+    scene: { objects: [] },
+    sel: { clips: [], nodes: [], objects: [] },
+    ws: 'edit',
+    ui: { pps: 80, snap: true, bin: 'media', mob: 'view', graphOpen: false, status: 'Ready' }
+  };
+}
+
+const S = createProject();
+const T = { time: 0, playing: false, rate: 1, loop: false };
+
+let past = [], future = [], pend = null, dirty = false, dragging = false;
+const doc = () => ({ meta:S.meta, media:S.media, tracks:S.tracks, markers:S.markers,
+                     graph:S.graph, scene:S.scene, sel:S.sel });
+const snapshot = () => deepClone(doc());
+function restore(s) { Object.assign(S, deepClone(s)); }
+
+/** The single mutation path. `transient` skips history (drag previews). */
+function edit(label, fn, transient) {
+  if (!transient) { past.push({ label, state: snapshot() }); if (past.length > 80) past.shift(); future.length = 0; }
+  fn(S);
+  S.meta.modifiedAt = Date.now(); dirty = true;
+  if (!transient) { S.ui.status = label; render(); }
+}
+function begin() { pend = snapshot(); }
+function commit(label) {
+  if (!pend) return;
+  past.push({ label, state: pend }); if (past.length > 80) past.shift();
+  future.length = 0; pend = null; S.ui.status = label; dirty = true; render();
+}
+function undo() { const e = past.pop(); if (!e) return;
+  future.push({ label: e.label, state: snapshot() }); restore(e.state);
+  S.ui.status = 'Undo — ' + e.label; render(); toast('Undo — ' + e.label); }
+function redo() { const e = future.pop(); if (!e) return;
+  past.push({ label: e.label, state: snapshot() }); restore(e.state);
+  S.ui.status = 'Redo — ' + e.label; render(); toast('Redo — ' + e.label); }
+function status(m) { S.ui.status = m; const n = $('#statusMsg'); if (n) n.textContent = m; }
+
+/* persistence — the folder format collapses to one JSON document here */
+function serialize() {
+  return JSON.stringify({ format:'eternalnode.project', formatVersion:FORMAT, project:S.meta,
+    timeline:{ tracks:S.tracks, markers:S.markers }, nodes:S.graph, scene:S.scene,
+    media:S.media.map(m => ({ ...m, url:'', missing:true })) }, null, 2);
+}
+function deserialize(json) {
+  const d = JSON.parse(json);
+  if (d.format !== 'eternalnode.project') throw new Error('Not an EternalNode project file.');
+  const base = createProject(d.project && d.project.name);
+  Object.assign(S, base);
+  Object.assign(S.meta, d.project || {});
+  S.media = d.media || []; S.tracks = (d.timeline && d.timeline.tracks) || S.tracks;
+  S.markers = (d.timeline && d.timeline.markers) || [];
+  S.graph = d.nodes || { nodes:[], edges:[] }; S.scene = d.scene || { objects:[] };
+  past = []; future = [];
+  status('Project loaded — relink media to restore previews');
+}
+function saveFile() {
+  const b = new Blob([serialize()], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = S.meta.name.replace(/\s+/g,'_') + '.eternal.json';
+  a.click(); URL.revokeObjectURL(a.href); dirty = false; status('Project saved'); toast('Project saved');
+}
+setInterval(() => { if (!dirty) return;
+  try { localStorage.setItem(AUTOSAVE, serialize()); dirty = false; } catch (e) {} }, 15000);
+
+/* ------------------------------------------------------------ media/engine */
+const vidEls = new Map(), imgEls = new Map();
+
+function probeVideo(url) {
+  return new Promise((res, rej) => {
+    const v = document.createElement('video');
+    v.preload = 'metadata'; v.muted = true; v.playsInline = true; v.src = url;
+    v.onloadeddata = () => { v.currentTime = Math.min(0.2, (v.duration||1)/2);
+      v.onseeked = () => { const c = document.createElement('canvas');
+        c.width = 160; c.height = Math.max(1, Math.round(160*v.videoHeight/(v.videoWidth||1)));
+        c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+        res({ duration: isFinite(v.duration)?v.duration:10, width:v.videoWidth, height:v.videoHeight,
+              thumbnail: c.toDataURL('image/jpeg',.6) }); }; };
+    v.onerror = () => rej(new Error('could not be decoded'));
+  });
+}
+function probeImage(url) {
+  return new Promise((res, rej) => { const i = new Image();
+    i.onload = () => { const c = document.createElement('canvas');
+      c.width = 160; c.height = Math.max(1, Math.round(160*i.height/i.width));
+      c.getContext('2d').drawImage(i,0,0,c.width,c.height);
+      res({ width:i.width, height:i.height, duration:5, thumbnail:c.toDataURL('image/jpeg',.6) }); };
+    i.onerror = () => rej(new Error('could not be decoded')); i.src = url; });
+}
+function probeAudio(url) {
+  return new Promise((res, rej) => { const a = document.createElement('audio');
+    a.preload = 'metadata'; a.src = url;
+    a.onloadedmetadata = () => res({ duration: isFinite(a.duration)?a.duration:10, width:0, height:0 });
+    a.onerror = () => rej(new Error('could not be decoded')); });
+}
+async function importFile(file) {
+  const url = URL.createObjectURL(file);
+  const kind = file.type.startsWith('video') ? 'video' : file.type.startsWith('audio') ? 'audio' : 'image';
+  const info = kind === 'video' ? await probeVideo(url) : kind === 'image' ? await probeImage(url) : await probeAudio(url);
+  return Object.assign({ id: uid('med'), name: file.name, kind, url }, info);
+}
+function elementFor(a) {
+  if (a.kind === 'image' || !a.url) return null;
+  let e = vidEls.get(a.id);
+  if (!e) { e = document.createElement('video'); e.src = a.url; e.playsInline = true;
+    e.preload = 'auto'; e.muted = a.kind === 'video'; vidEls.set(a.id, e); }
+  return e;
+}
+function imageFor(a) {
+  if (a.kind !== 'image' || !a.url) return null;
+  let i = imgEls.get(a.id);
+  if (!i) { i = new Image(); i.src = a.url; imgEls.set(a.id, i); }
+  return i;
+}
+/** Seek while scrubbing, free-run while playing, correct only on real drift. */
+function syncEl(el, t, playing, rate) {
+  const drift = Math.abs(el.currentTime - t);
+  if (playing) { if (el.playbackRate !== rate) el.playbackRate = rate;
+    if (drift > .25) el.currentTime = t; if (el.paused) el.play().catch(()=>{}); }
+  else { if (!el.paused) el.pause(); if (drift > 1/60) el.currentTime = t; }
+}
+const pauseAll = () => vidEls.forEach(e => e.pause());
+
+/* --------------------------------------------------------- timeline/engine */
+const SNAP_PX = 9;
+const allClips = () => S.tracks.flatMap(t => t.clips);
+const findClip = id => allClips().find(c => c.id === id);
+const clipEnd = c => c.start + c.duration;
+const contentDur = () => allClips().reduce((m,c) => Math.max(m, clipEnd(c)), 0);
+const sortClips = a => a.sort((x,y) => x.start - y.start);
+const trackOf = id => S.tracks.find(t => t.id === id);
+
+function snapPoints(exceptId) {
+  const p = [0, T.time].concat(S.markers.map(m => m.time));
+  for (const c of allClips()) { if (c.id === exceptId) continue; p.push(c.start, clipEnd(c)); }
+  return p;
+}
+function applySnap(v, pts, tol) {
+  let best = v, d = tol;
+  for (const p of pts) { const dd = Math.abs(p - v); if (dd < d) { d = dd; best = p; } }
+  return best;
+}
+function addTrack(kind) {
+  edit('Add track', s => {
+    const t = mkTrack(kind, kind[0].toUpperCase()+kind.slice(1)+' '+(s.tracks.filter(x=>x.kind===kind).length+1),
+      kind === 'audio' ? 52 : 58);
+    if (kind === 'audio') { s.tracks.push(t); return; }
+    const i = s.tracks.findIndex(x => x.kind === 'audio');
+    s.tracks.splice(i === -1 ? s.tracks.length : i, 0, t);
+  });
+}
+function addClipFromAsset(asset, trackId, start) {
+  const id = uid('clp');
+  edit('Add clip', s => {
+    const tr = s.tracks.find(t => t.id === trackId); if (!tr) return;
+    tr.clips.push({ id, trackId, name: asset.name, assetId: asset.id,
+      start: snapFrame(Math.max(0,start), s.meta.fps), duration: Math.max(.2, asset.duration || 5),
+      inPoint: 0, speed: 1, opacity: 1, effects: [] });
+    sortClips(tr.clips);
+    s.meta.duration = Math.max(s.meta.duration, start + (asset.duration||5) + 2);
+    s.sel.clips = [id];
+  });
+  return id;
+}
+function addTextClip(text, trackId, start, dur) {
+  const id = uid('clp');
+  edit('Add title', s => {
+    const tr = s.tracks.find(t => t.id === trackId) || s.tracks[0];
+    tr.clips.push({ id, trackId: tr.id, name: text.slice(0,24), start, duration: dur||4,
+      inPoint:0, speed:1, opacity:1, effects:[], text });
+    sortClips(tr.clips); s.sel.clips = [id];
+  });
+  return id;
+}
+function moveClip(id, start, trackId, transient) {
+  edit('Move clip', s => {
+    let clip, from;
+    for (const t of s.tracks) { const c = t.clips.find(c => c.id === id); if (c) { clip = c; from = t; break; } }
+    if (!clip) return;
+    clip.start = Math.max(0, snapFrame(start, s.meta.fps));
+    const target = trackId && trackId !== from.id ? s.tracks.find(t => t.id === trackId) : null;
+    if (target) { from.clips.splice(from.clips.indexOf(clip),1); clip.trackId = target.id; target.clips.push(clip); sortClips(target.clips); }
+    else sortClips(from.clips);
+    s.meta.duration = Math.max(s.meta.duration, clipEnd(clip) + 2);
+  }, transient);
+}
+function trimClip(id, edge, time, transient) {
+  edit('Trim clip', s => {
+    const c = allClips().find(c => c.id === id); if (!c) return;
+    const fps = s.meta.fps;
+    if (edge === 'start') {
+      const st = clamp(snapFrame(time,fps), 0, clipEnd(c) - 1/fps), d = st - c.start;
+      c.start = st; c.duration -= d; c.inPoint = Math.max(0, c.inPoint + d);
+    } else c.duration = Math.max(1/fps, snapFrame(time,fps) - c.start);
+  }, transient);
+}
+function slipClip(id, delta, transient) {
+  edit('Slip clip', () => { const c = findClip(id); if (c) c.inPoint = Math.max(0, c.inPoint + delta); }, transient);
+}
+function splitAt(time) {
+  edit('Split clip', s => {
+    const fps = s.meta.fps, t = snapFrame(time, fps);
+    for (const tr of s.tracks) {
+      const out = [];
+      for (const c of tr.clips) {
+        if (t > c.start + 1/fps && t < clipEnd(c) - 1/fps) {
+          out.push({ ...c, duration: t - c.start });
+          out.push({ ...c, id: uid('clp'), start: t, duration: clipEnd(c) - t,
+                     inPoint: c.inPoint + (t - c.start) * c.speed });
+        } else out.push(c);
+      }
+      tr.clips = sortClips(out);
+    }
+  });
+}
+function deleteClips(ids, ripple) {
+  if (!ids.length) return;
+  edit(ripple ? 'Ripple delete' : 'Delete clip', s => {
+    const gone = allClips().filter(c => ids.includes(c.id));
+    for (const tr of s.tracks) tr.clips = tr.clips.filter(c => !ids.includes(c.id));
+    if (ripple) for (const g of gone) {
+      const tr = s.tracks.find(t => t.id === g.trackId); if (!tr) continue;
+      for (const c of tr.clips) if (c.start > g.start) c.start -= g.duration;
+    }
+    s.sel.clips = [];
+  });
+}
+function selectClips(ids, add) {
+  S.sel.clips = add ? Array.from(new Set(S.sel.clips.concat(ids))) : ids;
+  if (ids.length) { S.sel.nodes = []; S.sel.objects = []; }
+  render();
+}
+
+/* transport */
+let last = performance.now();
+function tick(now) {
+  requestAnimationFrame(tick);
+  const dt = (now - last) / 1000; last = now;
+  if (T.playing) {
+    let t = T.time + dt * T.rate;
+    if (t >= S.meta.duration) { if (T.loop) t = 0; else { t = S.meta.duration; T.playing = false; syncTransportUI(); } }
+    T.time = t;
+    paintPlayhead();
+  }
+}
+requestAnimationFrame(tick);
+const play = () => { T.playing = true; syncTransportUI(); };
+const pausePb = () => { T.playing = false; pauseAll(); syncTransportUI(); };
+const togglePlay = () => T.playing ? pausePb() : play();
+const seek = t => { T.time = clamp(t, 0, S.meta.duration); paintPlayhead(); };
+const stepFrames = n => seek(T.time + n / S.meta.fps);
+
+/* ------------------------------------------------------ animation/keyframes */
+function ease(kind, t) {
+  switch (kind) {
+    case 'hold': return 0;
+    case 'easeIn': return t*t*t;
+    case 'easeOut': return 1 - Math.pow(1-t,3);
+    case 'spring': return 1 - Math.exp(-8*t) * Math.cos(10*t*(1-t)*Math.PI);
+    case 'easeInOut': return t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+    default: return t;
+  }
+}
+function sampleKeys(keys, time, fallback) {
+  if (!keys || !keys.length) return fallback || 0;
+  if (keys.length === 1) return keys[0].v;
+  if (time <= keys[0].t) return keys[0].v;
+  if (time >= keys[keys.length-1].t) return keys[keys.length-1].v;
+  for (let i = 0; i < keys.length-1; i++) {
+    const a = keys[i], b = keys[i+1];
+    if (time >= a.t && time <= b.t) return a.v + (b.v - a.v) * ease(a.ease, (time - a.t) / ((b.t - a.t) || 1e-6));
+  }
+  return fallback || 0;
+}
+const insertKey = (keys, k) => keys.filter(x => Math.abs(x.t - k.t) > 1e-4).concat(k).sort((a,b) => a.t - b.t);
+const removeKey = (keys, t) => keys.filter(k => Math.abs(k.t - t) > 1e-4);
+function resolveParams(node, time) {
+  const out = Object.assign({}, node.params);
+  for (const k in node.anim || {}) if (node.anim[k] && node.anim[k].length) out[k] = sampleKeys(node.anim[k], time);
+  return out;
+}
+function valueRange(keys) {
+  if (!keys.length) return [0,1];
+  let mn = Infinity, mx = -Infinity;
+  for (const k of keys) { mn = Math.min(mn,k.v); mx = Math.max(mx,k.v); }
+  if (mn === mx) { mn -= .5; mx += .5; }
+  const pad = (mx - mn) * .15; return [mn - pad, mx + pad];
+}
+
+/* ---------------------------------------------------------- nodes/registry */
+const PORT_COLOR = { video:'#22e4f5', audio:'#5ef2a4', geometry:'#a855f7', anim:'#ffb347', ai:'#ff2d8a', value:'#7c8798' };
+const V = (n='in', l='Video') => ({ name:n, label:l, type:'video' });
+const N = (name,label,def,min,max,step,anim=true) => ({ name,label,type:'number',def,min,max,step,anim });
+
+const NODE_DEFS = [
+  { type:'source', title:'Media Source', cat:'Input', accent:'video', in:[], out:[V('out','Video')], params:[],
+    desc:'The composited timeline frame at the current time.' },
+  { type:'grade', title:'Color Grade', cat:'Color', accent:'video', in:[V()], out:[V('out')], pass:'grade',
+    params:[ N('exposure','Exposure',0,-3,3,.01), N('contrast','Contrast',1,0,3,.01),
+             N('saturation','Saturation',1,0,3,.01), N('temperature','Temperature',0,-1,1,.01),
+             { name:'tint', label:'Tint', type:'color', def:'#8bd8ff' }, N('tintAmount','Tint Amount',0,0,1,.01) ],
+    desc:'Exposure, contrast, saturation and a tint pass.' },
+  { type:'glow', title:'Glow', cat:'Stylize', accent:'video', in:[V()], out:[V('out')], pass:'glow',
+    params:[ N('threshold','Threshold',.6,0,1,.01), N('intensity','Intensity',.8,0,3,.01), N('radius','Radius',3,.5,12,.1) ],
+    desc:'Threshold bloom with a 16-tap spiral blur.' },
+  { type:'corruption', title:'Signal Corruption', cat:'Distort', accent:'video', in:[V()], out:[V('out')], pass:'corruption',
+    params:[ N('amount','Amount',.35,0,1,.01), N('blockSize','Block Size',16,2,120,1),
+             N('shift','RGB Shift',.4,0,3,.01), N('speed','Speed',1,0,6,.01) ],
+    desc:'Block displacement and channel separation for damaged-signal looks.' },
+  { type:'grain', title:'Digital Noise', cat:'Stylize', accent:'video', in:[V()], out:[V('out')], pass:'grain',
+    params:[ N('amount','Amount',.12,0,1,.01), N('size','Size',1,.25,6,.05), N('chroma','Chroma Noise',.3,0,1,.01) ],
+    desc:'Animated sensor grain with optional chroma noise.' },
+  { type:'scanlines', title:'CRT Scanlines', cat:'Stylize', accent:'video', in:[V()], out:[V('out')], pass:'scanlines',
+    params:[ N('density','Density',320,40,1200,1), N('strength','Strength',.25,0,1,.01), N('roll','Roll Speed',.15,-2,2,.01) ],
+    desc:'Horizontal line structure with a rolling refresh bar.' },
+  { type:'vignette', title:'Vignette', cat:'Color', accent:'video', in:[V()], out:[V('out')], pass:'vignette',
+    params:[ N('amount','Amount',.4,0,1,.01), N('radius','Radius',.75,.1,1.5,.01) ],
+    desc:'Radial falloff toward the frame edge.' },
+  { type:'transform', title:'Transform', cat:'Composite', accent:'video', in:[V()], out:[V('out')], pass:'transform',
+    params:[ N('scale','Scale',1,.1,4,.01), N('offsetX','Offset X',0,-1,1,.001),
+             N('offsetY','Offset Y',0,-1,1,.001), N('rotation','Rotation',0,-180,180,.1) ],
+    desc:'Scale, position and rotate the frame on the GPU.' },
+  { type:'timestamp', title:'Timestamp Overlay', cat:'Composite', accent:'video', in:[V()], out:[V('out')], pass:'timestamp',
+    params:[ N('opacity','Opacity',.85,0,1,.01), N('scale','Size',1,.5,3,.05,false) ],
+    desc:'Burned-in recording timestamp drawn from the sequence time.' },
+  { type:'output', title:'Final Output', cat:'Output', accent:'video', in:[V()], out:[], params:[],
+    desc:'What the viewport and the exporter render.' },
+  { type:'tracking', title:'Motion Tracking', cat:'AI', accent:'ai', in:[V()],
+    out:[V('out'),{name:'motion',label:'Motion',type:'anim'}], params:[ N('confidence','Confidence',.7,0,1,.01,false) ],
+    planned:true, desc:'Planned — point and planar tracking through the ONNX runtime.' },
+  { type:'depth', title:'Depth Estimation', cat:'AI', accent:'ai', in:[V()], out:[{name:'depth',label:'Depth',type:'video'}],
+    params:[ N('strength','Strength',1,0,2,.01,false) ], planned:true,
+    desc:'Planned — monocular depth for relighting and 3D placement.' },
+  { type:'matte', title:'Background Removal', cat:'AI', accent:'ai', in:[V()],
+    out:[V('out'),{name:'alpha',label:'Alpha',type:'video'}], params:[ N('feather','Feather',.2,0,1,.01,false) ],
+    planned:true, desc:'Planned — segmentation matte with edge refinement.' },
+  { type:'scene3d', title:'3D Scene', cat:'3D', accent:'geometry', in:[{name:'geo',label:'Geometry',type:'geometry'}],
+    out:[V('out')], params:[ N('blend','Blend',1,0,1,.01) ], planned:true,
+    desc:'Planned — renders the 3D workspace scene into the composite.' }
+];
+const NODE_MAP = Object.fromEntries(NODE_DEFS.map(d => [d.type, d]));
+function createNode(type, x, y) {
+  const d = NODE_MAP[type], params = {};
+  d.params.forEach(p => params[p.name] = p.def);
+  return { id: uid('nd'), type, x, y, params, anim: {} };
+}
+/** Plugin surface: the marketplace registers new node types through this. */
+function registerNode(def) { if (NODE_MAP[def.type]) throw new Error('duplicate node type'); NODE_DEFS.push(def); NODE_MAP[def.type] = def; }
+
+/* --------------------------------------------------------- nodes/evaluator */
+const inEdge = (id, port) => S.graph.edges.find(e => e.to.node === id && e.to.port === (port || 'in'));
+/** Walk back from Final Output along connected video ports; unwired nodes cost nothing. */
+function evaluate(time) {
+  const out = S.graph.nodes.find(n => n.type === 'output'); if (!out) return [];
+  const chain = [], seen = new Set(); let cur = out;
+  while (cur && !seen.has(cur.id)) { seen.add(cur.id); chain.push(cur);
+    const e = inEdge(cur.id); if (!e) break; cur = S.graph.nodes.find(n => n.id === e.from.node); }
+  chain.reverse();
+  return chain.filter(n => NODE_MAP[n.type].pass && !n.bypass)
+              .map(n => ({ nodeId:n.id, pass:NODE_MAP[n.type].pass, params:resolveParams(n, time) }));
+}
+function graphConnected() {
+  const out = S.graph.nodes.find(n => n.type === 'output'); if (!out) return false;
+  const seen = new Set(); let cur = out;
+  while (cur && !seen.has(cur.id)) { if (cur.type === 'source') return true; seen.add(cur.id);
+    const e = inEdge(cur.id); if (!e) return false; cur = S.graph.nodes.find(n => n.id === e.from.node); }
+  return false;
+}
+/** Rejects type mismatches and anything that would close a loop. */
+function canConnect(from, to) {
+  if (from.node === to.node) return false;
+  const fd = NODE_MAP[(S.graph.nodes.find(n => n.id === from.node)||{}).type];
+  const td = NODE_MAP[(S.graph.nodes.find(n => n.id === to.node)||{}).type];
+  if (!fd || !td) return false;
+  const a = (fd.out.find(p => p.name === from.port)||{}).type, b = (td.in.find(p => p.name === to.port)||{}).type;
+  if (!a || !b || a !== b) return false;
+  const stack = [from.node], seen = new Set();
+  while (stack.length) { const id = stack.pop();
+    if (id === to.node) return false;
+    if (seen.has(id)) continue; seen.add(id);
+    S.graph.edges.filter(e => e.to.node === id).forEach(e => stack.push(e.from.node)); }
+  return true;
+}
+
+/* ------------------------------------------------------- video/compositor */
+const VERT = `#version 300 es
+in vec2 aPos; out vec2 vUv;
+void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0.0,1.0); }`;
+const HEAD = `#version 300 es
+precision highp float; in vec2 vUv; out vec4 fragColor;
+uniform sampler2D uTex; uniform vec2 uRes; uniform float uTime;
+`;
+const FRAG = {
+copy: HEAD + `void main(){ fragColor = texture(uTex,vUv); }`,
+grade: HEAD + `uniform float uExposure,uContrast,uSaturation,uTemperature,uTintAmount; uniform vec3 uTint;
+void main(){ vec4 c=texture(uTex,vUv); vec3 r=c.rgb*pow(2.0,uExposure);
+ r += vec3(uTemperature*0.08,0.0,-uTemperature*0.08);
+ r = (r-0.5)*uContrast+0.5; float l=dot(r,vec3(0.2126,0.7152,0.0722));
+ r = mix(vec3(l),r,uSaturation); r = mix(r,r*uTint*1.4,uTintAmount);
+ fragColor = vec4(clamp(r,0.0,1.0),c.a); }`,
+glow: HEAD + `uniform float uThreshold,uIntensity,uRadius;
+void main(){ vec4 b=texture(uTex,vUv); vec2 px=uRadius/uRes; vec3 bl=vec3(0.0);
+ for(int i=0;i<16;i++){ float a=float(i)*0.3926991; float r=1.0+float(i%4)*1.6;
+  vec3 s=texture(uTex,vUv+vec2(cos(a),sin(a))*px*r).rgb;
+  bl += s*smoothstep(uThreshold,uThreshold+0.25,dot(s,vec3(0.2126,0.7152,0.0722))); }
+ fragColor = vec4(b.rgb + bl/16.0*uIntensity, b.a); }`,
+corruption: HEAD + `uniform float uAmount,uBlockSize,uShift,uSpeed;
+float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+void main(){ float t=floor(uTime*uSpeed*12.0); vec2 bk=floor(vUv*uRes/max(uBlockSize,1.0));
+ float act=step(1.0-uAmount*0.35,hash(bk+t)); vec2 uv=vUv;
+ uv.x += (hash(vec2(bk.y,t))-0.5)*0.12*uAmount*act;
+ float sh=uShift/uRes.x*(1.0+act*6.0);
+ vec3 c=vec3(texture(uTex,uv+vec2(sh,0.0)).r, texture(uTex,uv).g, texture(uTex,uv-vec2(sh,0.0)).b);
+ float drop=step(0.995,hash(vec2(floor(vUv.y*200.0),t)));
+ c = mix(c, vec3(hash(vec2(vUv.y,t))), drop*uAmount*0.6);
+ fragColor = vec4(c, texture(uTex,uv).a); }`,
+grain: HEAD + `uniform float uAmount,uSize,uChroma;
+float hash(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
+void main(){ vec4 c=texture(uTex,vUv); vec2 p=floor(vUv*uRes/max(uSize,0.25))+floor(uTime*60.0);
+ float m=hash(p)-0.5; vec3 ch=vec3(hash(p+1.0),hash(p+2.0),hash(p+3.0))-0.5;
+ fragColor = vec4(clamp(c.rgb + mix(vec3(m),ch,uChroma)*uAmount,0.0,1.0), c.a); }`,
+scanlines: HEAD + `uniform float uDensity,uStrength,uRoll;
+void main(){ vec4 c=texture(uTex,vUv);
+ float line=sin((vUv.y+uTime*uRoll*0.1)*uDensity*3.14159);
+ float mask=1.0-uStrength*0.5*(0.5+0.5*line);
+ float bar=smoothstep(0.0,0.08,abs(fract(vUv.y-uTime*uRoll*0.25)-0.5));
+ fragColor = vec4(c.rgb*mask*mix(1.0,bar,uStrength*0.35), c.a); }`,
+vignette: HEAD + `uniform float uAmount,uRadius;
+void main(){ vec4 c=texture(uTex,vUv); float d=distance(vUv,vec2(0.5))/uRadius;
+ fragColor = vec4(c.rgb*mix(1.0,smoothstep(1.0,0.35,d),uAmount), c.a); }`,
+transform: HEAD + `uniform float uScale,uOffsetX,uOffsetY,uRotation;
+void main(){ vec2 uv=vUv-0.5; float r=radians(uRotation);
+ uv = mat2(cos(r),-sin(r),sin(r),cos(r))*uv; uv /= max(uScale,0.001);
+ uv -= vec2(uOffsetX,-uOffsetY); uv += 0.5;
+ float ins = step(0.0,uv.x)*step(uv.x,1.0)*step(0.0,uv.y)*step(uv.y,1.0);
+ vec4 c=texture(uTex,uv); fragColor = vec4(c.rgb*ins, c.a*ins); }`,
+timestamp: HEAD + `uniform sampler2D uOverlay; uniform float uOpacity;
+void main(){ vec4 b=texture(uTex,vUv); vec4 o=texture(uOverlay,vUv);
+ fragColor = vec4(mix(b.rgb,o.rgb,o.a*uOpacity), b.a); }`
+};
+
+class Compositor {
+  constructor(canvas) {
+    const gl = canvas.getContext('webgl2', { premultipliedAlpha:false, preserveDrawingBuffer:true });
+    if (!gl) throw new Error('WebGL2 is required for the preview. Update your browser or enable hardware acceleration.');
+    this.gl = gl; this.canvas = canvas; this.programs = {}; this.targets = null; this.w = 0; this.h = 0;
+    const quad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+    for (const k in FRAG) this.programs[k] = this.compile(VERT, FRAG[k]);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    this.src = this.tex(); this.ovTex = this.tex();
+    this.ov = document.createElement('canvas'); this.ov.width = 1024; this.ov.height = 256;
+  }
+  compile(vs, fs) {
+    const gl = this.gl;
+    const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('Shader: ' + gl.getShaderInfoLog(s)); return s; };
+    const p = gl.createProgram();
+    gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
+    gl.bindAttribLocation(p, 0, 'aPos'); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('Link: ' + gl.getProgramInfoLog(p));
+    return p;
+  }
+  tex() { const gl = this.gl, t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); return t; }
+  resize(w, h) {
+    if (this.w === w && this.h === h && this.targets) return;
+    const gl = this.gl; this.w = w; this.h = h; this.canvas.width = w; this.canvas.height = h;
+    if (this.targets) this.targets.forEach(t => { gl.deleteFramebuffer(t.fbo); gl.deleteTexture(t.tex); });
+    const build = () => { const tex = this.tex();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      const fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      return { fbo, tex }; };
+    this.targets = [build(), build()];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+  uniforms(p, params, time) {
+    const gl = this.gl;
+    gl.uniform2f(gl.getUniformLocation(p,'uRes'), this.w, this.h);
+    gl.uniform1f(gl.getUniformLocation(p,'uTime'), time);
+    gl.uniform1i(gl.getUniformLocation(p,'uTex'), 0);
+    for (const k in params) {
+      const loc = gl.getUniformLocation(p, 'u' + k[0].toUpperCase() + k.slice(1)); if (!loc) continue;
+      const v = params[k];
+      if (typeof v === 'number') gl.uniform1f(loc, v);
+      else if (typeof v === 'boolean') gl.uniform1f(loc, v ? 1 : 0);
+      else if (typeof v === 'string' && v[0] === '#') { const c = hexRGB(v); gl.uniform3f(loc, c[0], c[1], c[2]); }
+    }
+  }
+  overlay(text, scale) {
+    const c = this.ov, x = c.getContext('2d');
+    x.clearRect(0,0,c.width,c.height);
+    x.font = Math.round(46*scale) + 'px "JetBrains Mono",monospace';
+    x.fillStyle = '#e8fdff'; x.shadowColor = 'rgba(0,0,0,.8)'; x.shadowBlur = 8;
+    x.fillText(text, 40, 80);
+    x.fillStyle = '#ff2d8a'; x.beginPath(); x.arc(c.width-70, 62, 14*scale, 0, 6.2832); x.fill();
+    x.fillStyle = '#e8fdff'; x.font = Math.round(34*scale) + 'px "JetBrains Mono",monospace';
+    x.fillText('REC', c.width-190, 74);
+    const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.ovTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+  render(source, passes, time, tcText) {
+    const gl = this.gl;
+    if (!this.targets) this.resize(this.canvas.width || 1280, this.canvas.height || 720);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.src);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    gl.viewport(0, 0, this.w, this.h);
+    const list = passes.filter(p => this.programs[p.pass]);
+    const draw = (prog, tex, fbo) => { gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.useProgram(prog); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.drawArrays(gl.TRIANGLES, 0, 3); };
+    if (!list.length) { const p = this.programs.copy; gl.useProgram(p); this.uniforms(p, {}, time); draw(p, this.src, null); return; }
+    let input = this.src, ping = 0;
+    list.forEach((pass, i) => {
+      const prog = this.programs[pass.pass], lastPass = i === list.length-1;
+      gl.useProgram(prog); this.uniforms(prog, pass.params, time);
+      if (pass.pass === 'timestamp') { this.overlay(tcText, +pass.params.scale || 1);
+        gl.uniform1i(gl.getUniformLocation(prog,'uOverlay'), 1);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.ovTex); }
+      draw(prog, input, lastPass ? null : this.targets[ping].fbo);
+      if (!lastPass) { input = this.targets[ping].tex; ping = 1 - ping; }
+    });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+}
+
+/* --------------------------------------------------------- video/viewport */
+let comp = null, showGuides = false;
+const layer = document.createElement('canvas');
+try { comp = new Compositor($('#glcanvas')); }
+catch (e) { const n = $('#vpErr'); n.hidden = false; n.innerHTML = '<b>Preview stopped</b><br>' + esc(e.message); }
+
+function drawCover(ctx, src, sw, sh, dw, dh) {
+  if (!sw || !sh) return;
+  const s = Math.max(dw/sw, dh/sh), w = sw*s, h = sh*s;
+  ctx.drawImage(src, (dw-w)/2, (dh-h)/2, w, h);
+}
+function frameLoop() {
+  requestAnimationFrame(frameLoop);
+  if (!comp || $('#vpVideo').hidden) return;
+  const H = +$('#qualitySel').value, W = Math.round(H * S.meta.width / S.meta.height);
+  if (layer.width !== W || layer.height !== H) { layer.width = W; layer.height = H; }
+  comp.resize(W, H);
+  const ctx = layer.getContext('2d');
+  ctx.clearRect(0,0,W,H); ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+
+  for (let i = S.tracks.length - 1; i >= 0; i--) {       /* bottom-up compositing */
+    const tr = S.tracks[i]; if (tr.hidden) continue;
+    for (const clip of tr.clips) {
+      if (T.time < clip.start || T.time >= clipEnd(clip)) continue;
+      const local = (T.time - clip.start) * clip.speed + clip.inPoint;
+      ctx.save(); ctx.globalAlpha = clip.opacity;
+      if (tr.kind === 'text' && clip.text) {
+        ctx.font = '600 ' + Math.round(H*.09) + 'px "Chakra Petch",sans-serif';
+        ctx.textAlign = 'center'; ctx.fillStyle = '#f2fbff';
+        ctx.shadowColor = 'rgba(34,228,245,.55)'; ctx.shadowBlur = H*.03;
+        ctx.fillText(clip.text, W/2, H*.86);
+      } else if (clip.assetId) {
+        const a = S.media.find(m => m.id === clip.assetId);
+        if (a && !a.missing) {
+          if (a.kind === 'image') { const im = imageFor(a); if (im && im.complete) drawCover(ctx, im, im.naturalWidth, im.naturalHeight, W, H); }
+          else { const el = elementFor(a);
+            if (el) { el.muted = tr.kind === 'audio' ? tr.muted : true;
+              syncEl(el, local, T.playing, T.rate);
+              if (a.kind === 'video' && el.readyState >= 2) drawCover(ctx, el, el.videoWidth, el.videoHeight, W, H); } }
+        }
+      }
+      ctx.restore();
+    }
+  }
+  if (showGuides) { ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1;
+    ctx.strokeRect(W*.05, H*.05, W*.9, H*.9); ctx.strokeRect(W*.1, H*.1, W*.8, H*.8); }
+
+  try { comp.render(layer, evaluate(T.time), T.time, timecode(T.time, S.meta.fps)); }
+  catch (e) { const n = $('#vpErr'); n.hidden = false; n.innerHTML = '<b>Preview stopped</b><br>' + esc(e.message); }
+}
+requestAnimationFrame(frameLoop);
+
+/* ============================================================== threeD/engine
+   A small purpose-built WebGL renderer — no external library, so the file stays
+   self-contained and loads offline. Functional: primitives, orbit/pan/dolly with
+   touch, two-light PBR-ish shading, wireframe and flat modes, tap-to-select,
+   drag manipulation for move/rotate/scale, grid.
+   Planned: mesh edit mode, modifiers, booleans, UV, armatures, HDRI. */
+const M4 = {
+  id: () => new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]),
+  mul(a, b) { const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++)
+      o[c*4+r] = a[r]*b[c*4] + a[4+r]*b[c*4+1] + a[8+r]*b[c*4+2] + a[12+r]*b[c*4+3];
+    return o; },
+  persp(fovy, asp, n, f) { const t = 1/Math.tan(fovy/2), o = new Float32Array(16);
+    o[0]=t/asp; o[5]=t; o[10]=(f+n)/(n-f); o[11]=-1; o[14]=2*f*n/(n-f); return o; },
+  look(e, c, u) {
+    let z = [e[0]-c[0], e[1]-c[1], e[2]-c[2]];
+    let l = Math.hypot(z[0],z[1],z[2]) || 1; z = z.map(v => v/l);
+    let x = [u[1]*z[2]-u[2]*z[1], u[2]*z[0]-u[0]*z[2], u[0]*z[1]-u[1]*z[0]];
+    l = Math.hypot(x[0],x[1],x[2]) || 1; x = x.map(v => v/l);
+    const y = [z[1]*x[2]-z[2]*x[1], z[2]*x[0]-z[0]*x[2], z[0]*x[1]-z[1]*x[0]];
+    return new Float32Array([ x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0,
+      -(x[0]*e[0]+x[1]*e[1]+x[2]*e[2]), -(y[0]*e[0]+y[1]*e[1]+y[2]*e[2]), -(z[0]*e[0]+z[1]*e[1]+z[2]*e[2]), 1 ]); },
+  compose(p, r, s) {
+    const cx=Math.cos(r[0]),sx=Math.sin(r[0]),cy=Math.cos(r[1]),sy=Math.sin(r[1]),cz=Math.cos(r[2]),sz=Math.sin(r[2]);
+    const m = new Float32Array(16);
+    m[0]=(cy*cz)*s[0];            m[1]=(cx*sz+sx*sy*cz)*s[0];   m[2]=(sx*sz-cx*sy*cz)*s[0];
+    m[4]=(-cy*sz)*s[1];           m[5]=(cx*cz-sx*sy*sz)*s[1];   m[6]=(sx*cz+cx*sy*sz)*s[1];
+    m[8]=sy*s[2];                 m[9]=(-sx*cy)*s[2];           m[10]=(cx*cy)*s[2];
+    m[12]=p[0]; m[13]=p[1]; m[14]=p[2]; m[15]=1; return m; }
+};
+function geoFrom(kind) {
+  const pos = [], nrm = [], idx = [];
+  const push = (x,y,z,nx,ny,nz) => { pos.push(x,y,z); nrm.push(nx,ny,nz); };
+  const quad = (a,b,c,d) => idx.push(a,b,c, a,c,d);
+  if (kind === 'cube') {
+    const f = [[[1,0,0],[0,1,0],[0,0,1]],[[-1,0,0],[0,1,0],[0,0,-1]],[[0,1,0],[0,0,1],[1,0,0]],
+               [[0,-1,0],[0,0,-1],[1,0,0]],[[0,0,1],[0,1,0],[-1,0,0]],[[0,0,-1],[0,1,0],[1,0,0]]];
+    for (const [n,u,v] of f) { const b = pos.length/3;
+      for (const [su,sv] of [[-1,-1],[1,-1],[1,1],[-1,1]])
+        push(.6*(n[0]+u[0]*su+v[0]*sv), .6*(n[1]+u[1]*su+v[1]*sv), .6*(n[2]+u[2]*su+v[2]*sv), n[0],n[1],n[2]);
+      quad(b,b+1,b+2,b+3); }
+  } else if (kind === 'plane') {
+    const b = 0; for (const [x,z] of [[-1,-1],[1,-1],[1,1],[-1,1]]) push(x,0,z, 0,1,0); quad(b,b+1,b+2,b+3);
+  } else if (kind === 'sphere') {
+    const LA = 26, LO = 40;
+    for (let i = 0; i <= LA; i++) { const th = i/LA*Math.PI, st = Math.sin(th), ct = Math.cos(th);
+      for (let j = 0; j <= LO; j++) { const ph = j/LO*2*Math.PI, x = st*Math.cos(ph), y = ct, z = st*Math.sin(ph);
+        push(x*.75, y*.75, z*.75, x, y, z); } }
+    for (let i = 0; i < LA; i++) for (let j = 0; j < LO; j++) {
+      const a = i*(LO+1)+j; quad(a, a+LO+1, a+LO+2, a+1); }
+  } else if (kind === 'torus') {
+    const R = .62, r = .22, N = 40, M = 20;
+    for (let i = 0; i <= N; i++) { const u = i/N*2*Math.PI;
+      for (let j = 0; j <= M; j++) { const v = j/M*2*Math.PI;
+        const nx = Math.cos(v)*Math.cos(u), ny = Math.sin(v), nz = Math.cos(v)*Math.sin(u);
+        push((R+r*Math.cos(v))*Math.cos(u), r*Math.sin(v), (R+r*Math.cos(v))*Math.sin(u), nx, ny, nz); } }
+    for (let i = 0; i < N; i++) for (let j = 0; j < M; j++) { const a = i*(M+1)+j; quad(a, a+M+1, a+M+2, a+1); }
+  } else { /* cylinder + cone share the revolve path */
+    const N = 40, top = kind === 'cone' ? 0 : .55, bot = .55, h = .85;
+    for (let i = 0; i <= N; i++) { const a = i/N*2*Math.PI, cx = Math.cos(a), sz = Math.sin(a);
+      push(cx*top, h, sz*top, cx, .25, sz); push(cx*bot, -h, sz*bot, cx, .25, sz); }
+    for (let i = 0; i < N; i++) { const a = i*2; quad(a, a+2, a+3, a+1); }
+    const capC = pos.length/3; push(0, h, 0, 0, 1, 0);
+    for (let i = 0; i <= N; i++) { const a = i/N*2*Math.PI; push(Math.cos(a)*top, h, Math.sin(a)*top, 0, 1, 0); }
+    for (let i = 0; i < N; i++) idx.push(capC, capC+1+i, capC+2+i);
+    const bC = pos.length/3; push(0, -h, 0, 0, -1, 0);
+    for (let i = 0; i <= N; i++) { const a = i/N*2*Math.PI; push(Math.cos(a)*bot, -h, Math.sin(a)*bot, 0, -1, 0); }
+    for (let i = 0; i < N; i++) idx.push(bC, bC+2+i, bC+1+i);
+  }
+  if (kind === 'text3d') { pos.length = 0; nrm.length = 0; idx.length = 0;
+    const f = [[[1,0,0],[0,1,0],[0,0,1]],[[-1,0,0],[0,1,0],[0,0,-1]],[[0,1,0],[0,0,1],[1,0,0]],
+               [[0,-1,0],[0,0,-1],[1,0,0]],[[0,0,1],[0,1,0],[-1,0,0]],[[0,0,-1],[0,1,0],[1,0,0]]];
+    const sc = [.95,.28,.12];
+    for (const [n,u,v] of f) { const b = pos.length/3;
+      for (const [su,sv] of [[-1,-1],[1,-1],[1,1],[-1,1]]) {
+        const x = n[0]+u[0]*su+v[0]*sv, y = n[1]+u[1]*su+v[1]*sv, z = n[2]+u[2]*su+v[2]*sv;
+        push(x*sc[0], y*sc[1], z*sc[2], n[0], n[1], n[2]); }
+      quad(b,b+1,b+2,b+3); }
+  }
+  const seen = new Set(), lines = [];
+  for (let i = 0; i < idx.length; i += 3) for (const [a,b] of [[0,1],[1,2],[2,0]]) {
+    const x = idx[i+a], y = idx[i+b], k = x < y ? x+':'+y : y+':'+x;
+    if (!seen.has(k)) { seen.add(k); lines.push(x,y); } }
+  let rad = 0;
+  for (let i = 0; i < pos.length; i += 3) rad = Math.max(rad, Math.hypot(pos[i],pos[i+1],pos[i+2]));
+  return { pos:new Float32Array(pos), nrm:new Float32Array(nrm),
+           idx:new Uint16Array(idx), lines:new Uint16Array(lines), radius:rad };
+}
+
+const V3D = {
+  gl:null, prog:null, geo:new Map(), cam:{ az:.9, el:.55, dist:9, target:[0,.7,0] },
+  mode:'orbit', shade:'material', ortho:false, ready:false,
+  init() {
+    const c = $('#c3d'), gl = c.getContext('webgl2', { antialias:true });
+    if (!gl) { $('#foot3d').innerHTML = '<span class="err">WebGL2 is required for the 3D workspace.</span>'; return; }
+    this.gl = gl; gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
+    const vs = `#version 300 es
+      in vec3 aPos; in vec3 aNrm; uniform mat4 uMVP, uM; out vec3 vN; out vec3 vP;
+      void main(){ vN = mat3(uM)*aNrm; vP = (uM*vec4(aPos,1.0)).xyz; gl_Position = uMVP*vec4(aPos,1.0); }`;
+    const fs = `#version 300 es
+      precision highp float; in vec3 vN; in vec3 vP; out vec4 o;
+      uniform vec3 uColor, uEye; uniform float uMetal, uRough, uEmis, uUnlit, uFlat;
+      void main(){
+        if (uUnlit > .5) { o = vec4(uColor, 1.0); return; }
+        vec3 n = normalize(uFlat > .5 ? cross(dFdx(vP), dFdy(vP)) : vN);
+        vec3 v = normalize(uEye - vP);
+        vec3 l1 = normalize(vec3(.55,.85,.42)), l2 = normalize(vec3(-.6,.3,-.5));
+        float d1 = max(dot(n,l1),0.0), d2 = max(dot(n,l2),0.0);
+        float sp = pow(max(dot(reflect(-l1,n),v),0.0), mix(6.0,90.0,1.0-uRough)) * (1.0-uRough);
+        float rim = pow(1.0 - max(dot(n,v),0.0), 3.0);
+        vec3 c = uColor*(0.18 + d1*1.25) + vec3(.66,.33,.97)*d2*0.5*uColor
+               + vec3(1.0)*sp*mix(0.35,1.0,uMetal) + uColor*rim*0.55 + uColor*uEmis;
+        o = vec4(pow(clamp(c,0.0,1.0), vec3(0.9)), 1.0); }`;
+    const mk = (t,s) => { const sh = gl.createShader(t); gl.shaderSource(sh,s); gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; };
+    const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); this.prog = p; gl.useProgram(p);
+    this.loc = {}; ['uMVP','uM','uColor','uEye','uMetal','uRough','uEmis','uUnlit','uFlat']
+      .forEach(k => this.loc[k] = gl.getUniformLocation(p, k));
+    /* grid */
+    const g = [], n = 20;
+    for (let i = -n; i <= n; i++) { g.push(i,0,-n, i,0,n, -n,0,i, n,0,i); }
+    this.grid = { buf: gl.createBuffer(), count: g.length/3 };
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.grid.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(g), gl.STATIC_DRAW);
+    this.ready = true;
+    new ResizeObserver(() => this.resize()).observe(c);
+    this.resize();
+  },
+  resize() { const c = $('#c3d'); if (!c.clientWidth) return;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    c.width = c.clientWidth * dpr; c.height = c.clientHeight * dpr; },
+  buffers(kind) {
+    let b = this.geo.get(kind); if (b) return b;
+    const gl = this.gl, g = geoFrom(kind);
+    const mk = (data, target, Type) => { const buf = gl.createBuffer();
+      gl.bindBuffer(target, buf); gl.bufferData(target, data, gl.STATIC_DRAW); return buf; };
+    b = { pos: mk(g.pos, gl.ARRAY_BUFFER), nrm: mk(g.nrm, gl.ARRAY_BUFFER),
+          idx: mk(g.idx, gl.ELEMENT_ARRAY_BUFFER), lines: mk(g.lines, gl.ELEMENT_ARRAY_BUFFER),
+          count: g.idx.length, lcount: g.lines.length, radius: g.radius };
+    this.geo.set(kind, b); return b;
+  },
+  eye() { const c = this.cam;
+    return [ c.target[0] + c.dist*Math.cos(c.el)*Math.sin(c.az),
+             c.target[1] + c.dist*Math.sin(c.el),
+             c.target[2] + c.dist*Math.cos(c.el)*Math.cos(c.az) ]; },
+  matrices() { const c = $('#c3d'), asp = c.width / Math.max(1, c.height);
+    const fov = this.ortho ? .22 : .82, eye = this.eye();
+    const view = M4.look(eye, this.cam.target, [0,1,0]);
+    return { vp: M4.mul(M4.persp(fov, asp, .05, 400), view), eye, fov, asp };
+  },
+  draw() {
+    if (!this.ready || $('#vp3d').hidden) return;
+    const gl = this.gl, { vp, eye } = this.matrices();
+    gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
+    gl.clearColor(.039,.043,.059,1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(this.prog); gl.uniform3fv(this.loc.uEye, eye);
+    /* grid */
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.grid.buf);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
+    gl.disableVertexAttribArray(1); gl.vertexAttrib3f(1,0,1,0);
+    gl.uniformMatrix4fv(this.loc.uMVP,false,vp); gl.uniformMatrix4fv(this.loc.uM,false,M4.id());
+    gl.uniform1f(this.loc.uUnlit,1); gl.uniform3f(this.loc.uColor,.09,.14,.18);
+    gl.drawArrays(gl.LINES,0,this.grid.count);
+    gl.uniform1f(this.loc.uUnlit,0);
+    gl.uniform1f(this.loc.uFlat, this.shade === 'solid' ? 1 : 0);
+    for (const o of S.scene.objects) {
+      if (!o.visible) continue;
+      const b = this.buffers(o.kind), m = M4.compose(o.position, o.rotation, o.scale);
+      gl.bindBuffer(gl.ARRAY_BUFFER, b.pos); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, b.nrm); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,3,gl.FLOAT,false,0,0);
+      gl.uniformMatrix4fv(this.loc.uMVP,false,M4.mul(vp,m)); gl.uniformMatrix4fv(this.loc.uM,false,m);
+      const c = hexRGB(o.material.color);
+      gl.uniform3f(this.loc.uColor,c[0],c[1],c[2]);
+      gl.uniform1f(this.loc.uMetal,o.material.metallic); gl.uniform1f(this.loc.uRough,o.material.roughness);
+      gl.uniform1f(this.loc.uEmis,o.material.emissive);
+      const sel = S.sel.objects.includes(o.id);
+      if (this.shade === 'wireframe') {
+        gl.uniform1f(this.loc.uUnlit,1);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,b.lines); gl.drawElements(gl.LINES,b.lcount,gl.UNSIGNED_SHORT,0);
+        gl.uniform1f(this.loc.uUnlit,0);
+      } else {
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,b.idx); gl.drawElements(gl.TRIANGLES,b.count,gl.UNSIGNED_SHORT,0);
+        if (sel) { gl.uniform1f(this.loc.uUnlit,1); gl.uniform3f(this.loc.uColor,.13,.89,.96);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,b.lines); gl.drawElements(gl.LINES,b.lcount,gl.UNSIGNED_SHORT,0);
+          gl.uniform1f(this.loc.uUnlit,0); }
+      }
+    }
+  },
+  /** Ray built from the camera basis — no matrix inversion needed. */
+  pick(px, py) {
+    const c = $('#c3d'), r = c.getBoundingClientRect();
+    const ndcX = ((px - r.left)/r.width)*2 - 1, ndcY = 1 - ((py - r.top)/r.height)*2;
+    const { fov, asp, eye } = this.matrices(), t = Math.tan(fov/2);
+    let f = [this.cam.target[0]-eye[0], this.cam.target[1]-eye[1], this.cam.target[2]-eye[2]];
+    let l = Math.hypot(...f); f = f.map(v => v/l);
+    let rt = [f[2],0,-f[0]]; l = Math.hypot(...rt)||1; rt = rt.map(v => v/l);
+    const up = [rt[1]*f[2]-rt[2]*f[1], rt[2]*f[0]-rt[0]*f[2], rt[0]*f[1]-rt[1]*f[0]];
+    let d = [ f[0]+rt[0]*ndcX*t*asp+up[0]*ndcY*t, f[1]+rt[1]*ndcX*t*asp+up[1]*ndcY*t, f[2]+rt[2]*ndcX*t*asp+up[2]*ndcY*t ];
+    l = Math.hypot(...d); d = d.map(v => v/l);
+    let hit = null, best = Infinity;
+    for (const o of S.scene.objects) {
+      if (!o.visible) continue;
+      const rad = this.buffers(o.kind).radius * Math.max(...o.scale);
+      const oc = [eye[0]-o.position[0], eye[1]-o.position[1], eye[2]-o.position[2]];
+      const b = 2*(oc[0]*d[0]+oc[1]*d[1]+oc[2]*d[2]);
+      const cc = oc[0]*oc[0]+oc[1]*oc[1]+oc[2]*oc[2] - rad*rad;
+      const disc = b*b - 4*cc; if (disc < 0) continue;
+      const tHit = (-b - Math.sqrt(disc))/2; if (tHit < 0 || tHit > best) continue;
+      best = tHit; hit = o.id;
+    }
+    return hit;
+  }
+};
+function draw3DLoop() { requestAnimationFrame(draw3DLoop); V3D.draw(); }
+requestAnimationFrame(draw3DLoop);
+
+/* threeD/scene — document operations */
+function addPrimitive(kind) {
+  const id = uid('obj');
+  edit('Add 3D object', s => {
+    s.scene.objects.push({ id, kind,
+      name: kind[0].toUpperCase()+kind.slice(1)+' '+(s.scene.objects.filter(o=>o.kind===kind).length+1),
+      position:[0, kind === 'plane' ? 0 : .9, 0], rotation:[0,0,0], scale:[1,1,1],
+      material:{ color:'#8fd8ff', metallic:.2, roughness:.35, emissive:0 }, visible:true });
+    s.sel.objects = [id]; s.sel.clips = []; s.sel.nodes = [];
+  });
+  return id;
+}
+const updateObject = (id, patch, transient) =>
+  edit('Transform object', s => { const o = s.scene.objects.find(o => o.id === id); if (o) Object.assign(o, patch); }, transient);
+const updateMaterial = (id, patch, transient) =>
+  edit('Edit material', s => { const o = s.scene.objects.find(o => o.id === id); if (o) Object.assign(o.material, patch); }, transient);
+const deleteObjects = ids =>
+  edit('Delete 3D object', s => { s.scene.objects = s.scene.objects.filter(o => !ids.includes(o.id)); s.sel.objects = []; });
+function duplicateObject(id) {
+  edit('Duplicate object', s => { const o = s.scene.objects.find(o => o.id === id); if (!o) return;
+    const c = deepClone(o); c.id = uid('obj'); c.name = o.name + ' copy'; c.position[0] += 1.5;
+    s.scene.objects.push(c); s.sel.objects = [c.id]; });
+}
+function selectObjects(ids) { S.sel.objects = ids; if (ids.length) { S.sel.clips = []; S.sel.nodes = []; } render(); }
+
+/* ================================================================ ai/elaine
+   E.L.A.I.N.E. never returns a black box: a command resolves to a plan, the
+   plan is shown, and applying it creates ordinary nodes, clips, keyframes and
+   objects that stay editable and undoable. */
+const RECIPES = [
+  { m:/(security|surveillance|cctv|damaged|corrupt|broken)/i, t:'Damaged security recording', c:[
+    ['source'], ['grade',{exposure:-.45,contrast:1.25,saturation:.35,temperature:-.2,tint:'#7fd7c0',tintAmount:.18}],
+    ['corruption',{amount:.5,blockSize:22,shift:1.1,speed:1.4}], ['grain',{amount:.22,size:1.4,chroma:.45}],
+    ['scanlines',{density:420,strength:.35,roll:.3}], ['timestamp',{opacity:.9,scale:1}], ['output'] ] },
+  { m:/(cyberpunk|neon|purple and cyan|cyan and purple|eternal)/i, t:'Cyberpunk neon grade', c:[
+    ['source'], ['grade',{exposure:.1,contrast:1.2,saturation:1.35,temperature:-.25,tint:'#a855f7',tintAmount:.28}],
+    ['glow',{threshold:.55,intensity:1.1,radius:4.5}], ['vignette',{amount:.5,radius:.8}], ['output'] ] },
+  { m:/(vhs|analog|retro|tape|80s)/i, t:'Analog tape look', c:[
+    ['source'], ['grade',{exposure:-.1,contrast:.95,saturation:1.15,temperature:.2}],
+    ['corruption',{amount:.28,blockSize:40,shift:1.6,speed:.7}], ['scanlines',{density:240,strength:.4,roll:.6}],
+    ['grain',{amount:.18,size:2,chroma:.6}], ['output'] ] },
+  { m:/(cinematic|film|movie|teal and orange|filmic)/i, t:'Cinematic contrast grade', c:[
+    ['source'], ['grade',{exposure:.05,contrast:1.18,saturation:.95,temperature:.12,tint:'#ffb37a',tintAmount:.12}],
+    ['vignette',{amount:.35,radius:.9}], ['grain',{amount:.06,size:1.2,chroma:.1}], ['output'] ] },
+  { m:/(hologram|holographic|glitch)/i, t:'Holographic projection', c:[
+    ['source'], ['grade',{exposure:.2,contrast:1.1,saturation:.6,tint:'#22e4f5',tintAmount:.5}],
+    ['scanlines',{density:700,strength:.5,roll:.9}], ['corruption',{amount:.25,blockSize:14,shift:1.8,speed:2.2}],
+    ['glow',{threshold:.4,intensity:1.4,radius:6}], ['output'] ] }
+];
+const PRIM_WORDS = [[/sphere|ball|orb|planet/i,'sphere'],[/torus|ring|donut/i,'torus'],
+  [/cylinder|pillar|column/i,'cylinder'],[/cone|spike/i,'cone'],[/plane|floor|ground/i,'plane'],
+  [/cube|box|block|building/i,'cube']];
+const SUGGESTIONS = ['Make this footage look like a damaged cyberpunk security recording',
+  'Create a purple and cyan cyberpunk grade','Give it an analog VHS look',
+  'Create a smooth cinematic camera move','Add a 3D torus to the scene','Add a title that says ETERNAL CYBERIA'];
+
+function interpret(text) {
+  text = (text || '').trim();
+  const title = text.match(/(?:add|create|make)\s+(?:a\s+)?(?:title|text|caption)\s+(?:that says\s+)?["“]?(.+?)["”]?$/i);
+  if (title) { const words = title[1];
+    return { title:'Add title "' + words + '"',
+      steps:['Create a text clip on the Titles track at the playhead','Give it a four second duration'],
+      apply(){ const tr = S.tracks.find(t => t.kind === 'text') || S.tracks[0]; addTextClip(words, tr.id, T.time); } }; }
+
+  if (/\b(3d|model|scene|object|geometry)\b/i.test(text)) {
+    const kind = (PRIM_WORDS.find(p => p[0].test(text)) || [,'cube'])[1];
+    return { title:'Add a ' + kind + ' to the 3D scene',
+      steps:['Create a ' + kind + ' primitive','Select it so the transform tools are ready'],
+      apply(){ addPrimitive(kind); S.ws = 'model'; S.ui.mob = '3d'; render(); } }; }
+
+  if (/(camera move|push in|zoom in|dolly|cinematic move|pan)/i.test(text)) {
+    return { title:'Animate a slow push-in',
+      steps:['Add a Transform node in front of Final Output','Keyframe scale 1.00 → 1.12 over four seconds','Ease in and out'],
+      apply(){ const t0 = T.time, node = createNode('transform', 660, 130);
+        node.anim = { scale:[{t:t0,v:1,ease:'easeInOut'},{t:t0+4,v:1.12,ease:'easeInOut'}] };
+        edit('E.L.A.I.N.E. — camera move', s => {
+          const out = s.graph.nodes.find(n => n.type === 'output');
+          s.graph.nodes.push(node);
+          if (out) { const inc = s.graph.edges.find(e => e.to.node === out.id);
+            if (inc) inc.to = { node:node.id, port:'in' };
+            s.graph.edges.push({ id:uid('edg'), from:{node:node.id,port:'out'}, to:{node:out.id,port:'in'} }); }
+          s.sel.nodes = [node.id]; s.sel.clips = []; s.sel.objects = [];
+          s.ui.graphOpen = true; s.ws = 'animate'; s.ui.mob = 'edit';
+        }); } }; }
+
+  const r = RECIPES.find(r => r.m.test(text)) || RECIPES[1];
+  return { title:r.t, steps:r.c.map(c => NODE_MAP[c[0]].title),
+    apply(){
+      const nodes = r.c.map((step, i) => { const n = createNode(step[0], 40 + i*250, 110 + (i%2)*80);
+        if (step[1]) Object.assign(n.params, step[1]); return n; });
+      const edges = nodes.slice(0,-1).map((n,i) => ({ id:uid('edg'), from:{node:n.id,port:'out'}, to:{node:nodes[i+1].id,port:'in'} }));
+      edit('E.L.A.I.N.E. — ' + r.t, s => { s.graph = { nodes, edges };
+        s.sel.nodes = [(nodes[1]||nodes[0]).id]; s.sel.clips = []; s.sel.objects = [];
+        s.ws = 'node'; s.ui.mob = 'nodes'; });
+    } };
+}
+
+/* ========================================================== renderer/export */
+const PRESETS = [
+  { id:'youtube', label:'YouTube 1080p', w:1920, h:1080, fps:30, mbps:12, fmt:'webm' },
+  { id:'youtube4k', label:'YouTube 4K', w:3840, h:2160, fps:30, mbps:45, fmt:'webm' },
+  { id:'tiktok', label:'TikTok / Shorts', w:1080, h:1920, fps:30, mbps:10, fmt:'webm' },
+  { id:'square', label:'Instagram Square', w:1080, h:1080, fps:30, mbps:10, fmt:'webm' },
+  { id:'film', label:'Film 2K 24p', w:2048, h:1080, fps:24, mbps:30, fmt:'webm' },
+  { id:'frame', label:'Still frame (PNG)', w:1920, h:1080, fps:30, mbps:0, fmt:'png' },
+  { id:'seq', label:'PNG sequence', w:1920, h:1080, fps:30, mbps:0, fmt:'pngseq' }
+];
+const PLANNED_FMT = [ ['MP4 · H.264 / H.265 / AV1','Ships with the FFmpeg backend'],
+  ['MOV · ProRes','Ships with the FFmpeg backend'], ['GIF','Palette quantiser pending'],
+  ['EXR sequence','Needs the float working space'] ];
+let exCancel = false;
+const exState = { preset:'youtube', start:0, end:60, audio:true };
+
+function exProgress(phase, p, msg) {
+  const box = $('#exProg'); if (!box) return;
+  box.hidden = false;
+  box.querySelector('i').style.width = Math.round(p*100) + '%';
+  box.querySelector('span').textContent = msg;
+  box.classList.toggle('err', phase === 'error');
+}
+function dl(blob, name) { const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+
+async function runExport() {
+  const p = PRESETS.find(x => x.id === exState.preset), cv = $('#glcanvas');
+  const name = S.meta.name.replace(/\s+/g,'_');
+  exCancel = false;
+  if (!comp) return exProgress('error', 0, 'No render target — the preview could not start.');
+
+  if (p.fmt === 'png') {
+    exProgress('rendering', .5, 'Rendering frame…');
+    await new Promise(r => requestAnimationFrame(r));
+    cv.toBlob(b => { if (!b) return exProgress('error',0,'Frame capture failed.');
+      dl(b, name + '_frame.png'); exProgress('done',1,'Frame exported'); }, 'image/png');
+    return;
+  }
+  if (p.fmt === 'pngseq') {
+    if (!window.showDirectoryPicker) return exProgress('error', 0,
+      'Sequence export needs the File System Access API. Use Chrome or Edge on desktop, or export WebM.');
+    const dir = await window.showDirectoryPicker();
+    const total = Math.max(1, Math.round((exState.end - exState.start) * p.fps));
+    pausePb();
+    for (let i = 0; i < total; i++) {
+      if (exCancel) return exProgress('cancelled', i/total, 'Export cancelled');
+      seek(exState.start + i/p.fps);
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const b = await new Promise(r => cv.toBlob(r, 'image/png'));
+      if (b) { const fh = await dir.getFileHandle(name + '_' + String(i).padStart(5,'0') + '.png', { create:true });
+        const w = await fh.createWritable(); await w.write(b); await w.close(); }
+      exProgress('rendering', i/total, 'Frame ' + (i+1) + ' of ' + total);
+    }
+    return exProgress('done', 1, total + ' frames written');
+  }
+  if (typeof MediaRecorder === 'undefined' || !cv.captureStream)
+    return exProgress('error', 0, 'This browser cannot record the canvas. Export a still frame instead.');
+
+  const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+  const rec = new MediaRecorder(cv.captureStream(p.fps), { mimeType:mime, videoBitsPerSecond:p.mbps*1e6 });
+  const chunks = [];
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  const done = new Promise(res => { rec.onstop = () => {
+    dl(new Blob(chunks, { type:'video/webm' }), name + '.webm');
+    exProgress('done', 1, 'Export finished'); res(); }; });
+
+  seek(exState.start);
+  await new Promise(r => setTimeout(r, 140));
+  rec.start(250); play();
+  const dur = Math.max(.1, exState.end - exState.start), t0 = performance.now();
+  await new Promise(res => { const watch = () => {
+    if (exCancel || T.time >= exState.end || (performance.now()-t0)/1000 > dur + 1.5) return res();
+    exProgress('rendering', clamp((T.time - exState.start)/dur, 0, 1),
+      'Recording ' + T.time.toFixed(1) + 's of ' + exState.end.toFixed(1) + 's');
+    requestAnimationFrame(watch); }; watch(); });
+  pausePb();
+  exProgress('encoding', .98, 'Finalising container…');
+  rec.stop(); await done;
+}
+
+/* ================================================================== ui/render
+   Panels are rebuilt from state as HTML strings and driven by delegated
+   events. High-frequency work — playhead, scrub, drags — bypasses rebuilds and
+   writes to the DOM directly, so nothing re-renders at 60fps. */
+const WORKSPACES = [ ['edit','Edit',1], ['node','Nodes',1], ['model','Model',1],
+                     ['animate','Animate',1], ['material','Material',0], ['ai','E.L.A.I.N.E.',1] ];
+const MOBNAV = [ ['media','Media','▤'], ['view','View','▣'], ['edit','Edit','≡'], ['nodes','Nodes','⌘'], ['3d','3D','◈'] ];
+const KIND_ACC = { video:'var(--p-video)', audio:'var(--p-audio)', image:'var(--p-video)',
+                   text:'var(--purple)', object3d:'var(--p-geo)', adjustment:'var(--p-val)' };
+let rafRender = 0;
+function render() { if (rafRender) return; rafRender = requestAnimationFrame(() => { rafRender = 0; renderNow(); }); }
+function renderNow() {
+  if (dragging) return;
+  renderWS(); renderMobNav(); renderBin(); renderInspector();
+  renderTBar(); renderLanes(); renderNodesBar(); renderNodesSvg(); renderGraphEd();
+  renderStatus(); render3DBars(); layout(); paintPlayhead(); syncTransportUI();
+}
+function renderWS() {
+  $('#wsbar').innerHTML = WORKSPACES.map(([id,label,ready]) =>
+    `<button class="ws ${S.ws===id?'on':''} ${ready?'':'soon'}" data-act="ws" data-id="${id}">${label}</button>`).join('');
+}
+function renderMobNav() {
+  $('#mobnav').innerHTML = MOBNAV.map(([id,label,ico]) => {
+    const on = id === 'media' ? false : S.ui.mob === id;
+    return `<button class="${on?'on':''}" data-act="mob" data-id="${id}"><i>${ico}</i>${label}</button>`;
+  }).join('');
+}
+function renderStatus() {
+  $('#statusMsg').textContent = S.ui.status;
+  $('#statusStats').innerHTML =
+    `<span>${allClips().length} clips</span><span>${S.graph.nodes.length} nodes</span>` +
+    `<span>${S.scene.objects.length} objects</span>` +
+    `<span>${S.meta.width}×${S.meta.height} · ${S.meta.fps} fps</span>` +
+    `<span class="tc">${timecode(T.time, S.meta.fps)}</span>`;
+  $('#tcEnd').textContent = '/ ' + timecode(S.meta.duration, S.meta.fps);
+  const sc = $('#scrub'); sc.max = S.meta.duration; sc.step = 1/S.meta.fps;
+}
+function syncTransportUI() {
+  $('#playBtn').textContent = T.playing ? '❚❚' : '▶';
+  $('#loopBtn').classList.toggle('on', T.loop);
+  $('#guideBtn').classList.toggle('on', showGuides);
+}
+function layout() {
+  const ws = S.ws, phone = isPhone();
+  let vid = false, d3 = false, plan = false, tl = false, nd = false, ge = false;
+  if (ws === 'edit') { vid = tl = true; ge = S.ui.graphOpen; }
+  else if (ws === 'node' || ws === 'ai') { vid = true; nd = true; }
+  else if (ws === 'model') d3 = true;
+  else if (ws === 'animate') { vid = tl = ge = true; }
+  else if (ws === 'material') plan = true;
+  if (phone) { const m = S.ui.mob;
+    if (m === 'view') { tl = nd = ge = false; if (!d3 && !plan) vid = true; }
+    else if (m === 'edit') { vid = d3 = plan = nd = false; tl = true; ge = ws === 'animate' || S.ui.graphOpen; }
+    else if (m === 'nodes') { vid = d3 = plan = tl = ge = false; nd = true; }
+    else if (m === '3d') { vid = plan = tl = nd = ge = false; d3 = true; }
+  }
+  $('#vpVideo').hidden = !vid; $('#vp3d').hidden = !d3; $('#vpPlanned').hidden = !plan;
+  $('#top').hidden = !(vid || d3 || plan);
+  $('#timeline').hidden = !tl; $('#nodes').hidden = !nd; $('#geditor').hidden = !ge;
+  $('#bottom').hidden = !(tl || nd || ge);
+  $('#gripB').hidden = phone || $('#top').hidden || $('#bottom').hidden;
+  if (d3 && V3D.ready) V3D.resize();
+}
+function paintPlayhead() {
+  const ph = $('#playhead'); if (ph) ph.style.left = (T.time * S.ui.pps) + 'px';
+  const tc = $('#tcNow'); if (tc) tc.textContent = timecode(T.time, S.meta.fps);
+  const sc = $('#scrub'); if (sc && document.activeElement !== sc) sc.value = T.time;
+  const g = $('#gph');
+  if (g && gGeom) { const x = gGeom.tToX(T.time); g.setAttribute('x1', x); g.setAttribute('x2', x); }
+}
+
+/* ------------------------------------------------------------- project bin */
+function renderBin() {
+  const tabs = ['media','models','audio','ai'];
+  $('#binTabs').innerHTML = tabs.map(t =>
+    `<button class="tab ${S.ui.bin===t?'on':''}" data-act="bintab" data-id="${t}">${t}</button>`).join('');
+  const b = $('#binBody'); const tab = S.ui.bin;
+  if (tab === 'media' || tab === 'audio') {
+    const list = S.media.filter(m => tab === 'audio' ? m.kind === 'audio' : m.kind !== 'audio');
+    b.innerHTML =
+      `<button class="btn ghost wide" data-act="import">Import media</button>` +
+      (localStorage.getItem(AUTOSAVE) && !allClips().length
+        ? `<button class="btn ghost wide" data-act="recover">Restore autosaved session</button>` : '') +
+      (list.length ? '' : `<p class="hint">Nothing imported yet. Add video, audio or stills, then drag them onto a track — or tap Add.</p>`) +
+      `<ul class="bin">` + list.map(a => `
+        <li draggable="true" data-asset="${a.id}">
+          <div class="thumb">${a.thumbnail ? `<img src="${a.thumbnail}" alt="">` : esc(a.kind[0].toUpperCase())}</div>
+          <div class="meta"><b>${esc(a.name)}</b>
+            <span>${a.kind} · ${(a.duration||0).toFixed(1)}s${a.width?` · ${a.width}×${a.height}`:''}</span>
+            ${a.missing ? `<span class="tag warn">Relink needed</span>` : `<button class="chip add" data-act="addclip" data-id="${a.id}">Add to timeline</button>`}
+          </div>
+        </li>`).join('') + `</ul>`;
+  } else if (tab === 'models') {
+    b.innerHTML = `<span class="eyebrow">Primitives</span><div class="g3">` +
+      ['cube','sphere','cylinder','cone','torus','plane','text3d'].map(k =>
+        `<button class="btn ghost" data-act="prim" data-id="${k}">${k === 'text3d' ? 'text*' : k}</button>`).join('') +
+      `</div>` +
+      (S.scene.objects.length ? `<span class="eyebrow">Scene</span>` : `<p class="hint">Add a primitive to start a scene. Text is a stand-in slab until the font extruder lands.</p>`) +
+      S.scene.objects.map(o => `
+        <div class="row-item ${S.sel.objects.includes(o.id)?'sel':''}" data-act="selobj" data-id="${o.id}">
+          <span class="dot" style="background:${o.material.color}"></span><span>${esc(o.name)}</span>
+          <button class="ico tiny" data-act="dup3d" data-id="${o.id}" title="Duplicate">⧉</button>
+          <button class="ico tiny" data-act="del3d" data-id="${o.id}" title="Delete">✕</button>
+        </div>`).join('');
+  } else {
+    b.innerHTML = `<p class="hint">One tap builds an editable node chain. Nothing is baked in — every node stays adjustable.</p>` +
+      SUGGESTIONS.map(s => `<button class="btn ghost wrap" data-act="sugg" data-q="${esc(s)}">${esc(s)}</button>`).join('');
+  }
+}
+
+/* ------------------------------------------------------------------ inspector */
+function paramRow(node, p) {
+  const animated = !!(node.anim[p.name] && node.anim[p.name].length);
+  const live = animated ? sampleKeys(node.anim[p.name], T.time) : +node.params[p.name] || 0;
+  if (p.type === 'color') return `<label class="field row"><span>${p.label}</span>
+    <input type="color" data-in="nparam" data-node="${node.id}" data-p="${p.name}" value="${node.params[p.name]}"></label>`;
+  return `<div class="param">
+    <div class="ph2"><span>${p.label}</span><span class="rt"><span class="val">${live.toFixed(2)}</span>
+      ${p.anim !== false ? `<button class="sw ${animated?'on':''}" data-act="kf" data-node="${node.id}" data-p="${p.name}"
+        title="${animated?'Remove animation':'Animate this parameter'}">◆</button>` : ''}</span></div>
+    <input type="range" data-in="nparam" data-node="${node.id}" data-p="${p.name}"
+      min="${p.min}" max="${p.max}" step="${p.step}" value="${live}"></div>`;
+}
+function renderInspector() {
+  const clip = S.sel.clips[0] ? findClip(S.sel.clips[0]) : null;
+  const node = S.graph.nodes.find(n => n.id === S.sel.nodes[0]);
+  const obj = S.scene.objects.find(o => o.id === S.sel.objects[0]);
+  $('#inspTitle').textContent = node ? NODE_MAP[node.type].title : obj ? obj.name
+    : clip ? (clip.text || clip.name) : 'Nothing selected';
+  const b = $('#inspBody');
+  if (!clip && !node && !obj) {
+    b.innerHTML = `<p class="hint">Select a clip, a node or a 3D object to edit its properties.</p>
+      <span class="eyebrow">Project</span>
+      <label class="field"><span>Name</span><input class="input" data-in="pname" value="${esc(S.meta.name)}"></label>
+      <div class="g2">
+        <label class="field"><span>Width</span><input class="input num" type="number" data-in="pmeta" data-k="width" value="${S.meta.width}"></label>
+        <label class="field"><span>Height</span><input class="input num" type="number" data-in="pmeta" data-k="height" value="${S.meta.height}"></label>
+        <label class="field"><span>FPS</span><input class="input num" type="number" data-in="pmeta" data-k="fps" value="${S.meta.fps}"></label>
+        <label class="field"><span>Duration</span><input class="input num" type="number" data-in="pmeta" data-k="duration" value="${S.meta.duration}"></label>
+      </div>`;
+    return;
+  }
+  let h = '';
+  if (clip) h += `<span class="eyebrow">Clip</span>
+    <div class="param"><div class="ph2"><span>Start</span><span class="val">${clip.start.toFixed(2)}</span></div>
+      <input type="range" data-in="clip" data-id="${clip.id}" data-k="start" min="0" max="${S.meta.duration}" step="0.01" value="${clip.start}"></div>
+    <div class="param"><div class="ph2"><span>Duration</span><span class="val">${clip.duration.toFixed(2)}</span></div>
+      <input type="range" data-in="clip" data-id="${clip.id}" data-k="duration" min="0.1" max="${S.meta.duration}" step="0.01" value="${clip.duration}"></div>
+    <div class="param"><div class="ph2"><span>Opacity</span><span class="val">${clip.opacity.toFixed(2)}</span></div>
+      <input type="range" data-in="clip" data-id="${clip.id}" data-k="opacity" min="0" max="1" step="0.01" value="${clip.opacity}"></div>
+    <div class="param"><div class="ph2"><span>Speed</span><span class="val">${clip.speed.toFixed(2)}</span></div>
+      <input type="range" data-in="clip" data-id="${clip.id}" data-k="speed" min="0.1" max="4" step="0.01" value="${clip.speed}"></div>
+    ${clip.text !== undefined ? `<label class="field"><span>Text</span>
+      <input class="input" data-in="clip" data-id="${clip.id}" data-k="text" value="${esc(clip.text)}"></label>` : ''}
+    <button class="btn ghost wide" data-act="delclip" data-id="${clip.id}">Delete clip</button>`;
+  if (node) { const d = NODE_MAP[node.type];
+    h += `<span class="eyebrow">${d.cat}</span><p class="hint">${d.desc}</p>
+      ${d.planned ? `<span class="tag plan">Planned — evaluates as pass-through</span>` : ''}
+      <label class="field row"><span>Bypass</span>
+        <input type="checkbox" data-in="bypass" data-node="${node.id}" ${node.bypass?'checked':''}></label>` +
+      d.params.map(p => paramRow(node, p)).join('') +
+      `<button class="btn ghost wide" data-act="delnode" data-id="${node.id}">Delete node</button>`;
+  }
+  if (obj) { h += `<span class="eyebrow">Transform</span>` +
+    ['position','rotation','scale'].map(k => `<div class="vec"><b>${k}</b>` +
+      [0,1,2].map(a => `<input class="input num" type="number" step="${k==='rotation'?0.05:0.1}"
+        data-in="obj" data-id="${obj.id}" data-k="${k}" data-axis="${a}" value="${(+obj[k][a]).toFixed(3)}">`).join('') +
+      `</div>`).join('') +
+    `<span class="eyebrow">Material</span>
+     <label class="field row"><span>Base color</span>
+       <input type="color" data-in="mat" data-id="${obj.id}" data-k="color" value="${obj.material.color}"></label>` +
+    [['metallic','Metallic',0,1],['roughness','Roughness',0,1],['emissive','Emission',0,3]].map(([k,l,mn,mx]) =>
+      `<div class="param"><div class="ph2"><span>${l}</span><span class="val">${obj.material[k].toFixed(2)}</span></div>
+        <input type="range" data-in="mat" data-id="${obj.id}" data-k="${k}" min="${mn}" max="${mx}" step="0.01" value="${obj.material[k]}"></div>`).join('') +
+    `<p class="hint">Node-based materials reuse this registry and arrive with the Material workspace.</p>
+     <button class="btn ghost wide" data-act="del3d" data-id="${obj.id}">Delete object</button>`;
+  }
+  b.innerHTML = h;
+}
+
+/* ------------------------------------------------------------------ timeline */
+function renderTBar() {
+  $('#tbar').innerHTML = `
+    <button class="chip" data-act="split">Split</button>
+    <button class="chip" data-act="ripple" ${S.sel.clips.length?'':'disabled'}>Ripple delete</button>
+    <button class="chip" data-act="marker">Marker</button>
+    <button class="chip ${S.ui.snap?'on':''}" data-act="snap">Snap</button>
+    <button class="chip ${S.ui.graphOpen?'on':''}" data-act="graphtoggle">Curves</button>
+    <button class="chip" data-act="addtrack" data-id="video">+ Video</button>
+    <button class="chip" data-act="addtrack" data-id="audio">+ Audio</button>
+    <label class="chip" style="gap:8px">Zoom<input type="range" data-in="pps" min="16" max="400"
+      value="${S.ui.pps}" style="width:84px"></label>`;
+}
+function renderLanes() {
+  const pps = S.ui.pps, W = Math.max(S.meta.duration * pps, 400);
+  $('#heads').innerHTML = `<div class="corner"></div>` + S.tracks.map(t => `
+    <div class="thead" style="height:${t.height}px">
+      <span class="dot" style="background:${KIND_ACC[t.kind]}"></span><b>${esc(t.name)}</b>
+      <span class="flags">
+        <button class="flag ${t.hidden?'off':''}" data-act="tflag" data-id="${t.id}" data-k="hidden" title="Hide">◉</button>
+        <button class="flag ${t.muted?'off':''}" data-act="tflag" data-id="${t.id}" data-k="muted" title="Mute">♪</button>
+      </span></div>`).join('');
+  const step = [0.5,1,2,5,10,30,60].find(s => s*pps > 74) || 120;
+  let ticks = '';
+  for (let t = 0; t <= S.meta.duration; t += step)
+    ticks += `<div class="tick" style="left:${t*pps}px"><span>${timecode(t,S.meta.fps).slice(3,8)}</span></div>`;
+  ticks += S.markers.map(m => `<div class="mk" style="left:${m.time*pps}px;background:${m.color}" title="${esc(m.label)}"></div>`).join('');
+  const lanes = S.tracks.map(t => `
+    <div class="lane ${t.hidden?'hid':''}" data-track="${t.id}" style="height:${t.height}px">` +
+      t.clips.map(c => `
+        <div class="clip ${S.sel.clips.includes(c.id)?'sel':''}" data-clip="${c.id}"
+             style="left:${c.start*pps}px;width:${Math.max(6,c.duration*pps)}px;--acc:${KIND_ACC[t.kind]}">
+          <div class="h l"></div>
+          <div class="lbl"><b>${esc(c.text||c.name)}</b><span>${c.duration.toFixed(2)}s</span></div>
+          ${t.kind === 'audio' ? `<div class="wave ${T.playing?'play':''}">` +
+            Array.from({length:36}, () => `<i style="height:${25+Math.random()*75}%"></i>`).join('') + `</div>` : ''}
+          <div class="h r"></div>
+        </div>`).join('') + `</div>`).join('');
+  $('#scrollw').innerHTML =
+    `<div class="ruler">${ticks}</div>${lanes}` +
+    `<div class="snapline" id="snapline" hidden></div><div class="ph" id="playhead"><i></i></div>`;
+  $('#scrollw').style.width = W + 'px';
+}
+
+/* --------------------------------------------------------------- node editor */
+const NW = 200, NH = 32, NR = 20;
+const portY = i => NH + 14 + i*NR;
+const nodeH = n => { const d = NODE_MAP[n.type]; return NH + Math.max(d.in.length, d.out.length, 1)*NR + 18; };
+const wire = (x1,y1,x2,y2) => { const dx = Math.max(40, Math.abs(x2-x1)*.5);
+  return `M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}`; };
+let nview = { x:40, y:30, k:1 }, pending = null, paletteOpen = false, paletteQ = '';
+
+function renderNodesBar() {
+  $('#nbar').innerHTML = `
+    <button class="chip accent" data-act="palette">+ Add node</button>
+    <button class="chip" data-act="delnode" ${S.sel.nodes.length?'':'disabled'}>Delete</button>
+    <button class="chip" data-act="resetview">Reset view</button>
+    <button class="chip" data-act="autolayout">Tidy</button>
+    <span class="gstat ${graphConnected()?'live':''}">${graphConnected()
+      ? 'Chain live — rendering to viewport' : 'Connect Media Source → Final Output'}</span>`;
+  $('#palette').innerHTML = paletteOpen ? `<div class="palette">
+      <input id="palInput" placeholder="Search nodes…" value="${esc(paletteQ)}" autocomplete="off">
+      <div class="plist">` + NODE_DEFS.filter(d => !paletteQ ||
+        (d.title + ' ' + d.cat).toLowerCase().includes(paletteQ.toLowerCase())).map(d =>
+        `<button class="pitem" data-act="palitem" data-id="${d.type}">
+           <span class="dot" style="background:${PORT_COLOR[d.accent]}"></span>
+           <span>${d.title}</span><span class="cat">${d.cat}</span>
+           ${d.planned?'<span class="tag plan">soon</span>':''}</button>`).join('') + `</div></div>` : '';
+}
+function renderNodesSvg() {
+  const svg = $('#nodesvg');
+  const wires = S.graph.edges.map(e => {
+    const a = S.graph.nodes.find(n => n.id === e.from.node), b = S.graph.nodes.find(n => n.id === e.to.node);
+    if (!a || !b) return '';
+    const da = NODE_MAP[a.type], db = NODE_MAP[b.type];
+    const oi = da.out.findIndex(p => p.name === e.from.port), ii = db.in.findIndex(p => p.name === e.to.port);
+    const type = (da.out[oi]||{}).type || 'video';
+    return `<path class="wire ${type}" data-edge="${e.id}" stroke="${PORT_COLOR[type]}"
+      d="${wire(a.x+NW, a.y+portY(oi), b.x, b.y+portY(ii))}"></path>`;
+  }).join('');
+  let pend = '';
+  if (pending) { const a = S.graph.nodes.find(n => n.id === pending.from.node);
+    if (a) { const oi = NODE_MAP[a.type].out.findIndex(p => p.name === pending.from.port);
+      pend = `<path class="wire pend" stroke="${PORT_COLOR[pending.type]}"
+        d="${wire(a.x+NW, a.y+portY(oi), pending.x, pending.y)}"></path>`; } }
+  const nodes = S.graph.nodes.map(n => { const d = NODE_MAP[n.type];
+    const sel = S.sel.nodes.includes(n.id);
+    return `<g class="node ${sel?'sel':''} ${n.bypass?'byp':''}" data-node="${n.id}" transform="translate(${n.x},${n.y})">
+      <rect class="nbody" width="${NW}" height="${nodeH(n)}" rx="10" ${sel?`stroke="${PORT_COLOR[d.accent]}"`:''}></rect>
+      <rect width="${NW}" height="3" rx="2" fill="${PORT_COLOR[d.accent]}"></rect>
+      <text class="ntitle" x="12" y="22">${d.title}</text>
+      ${d.planned?`<text class="nbadge" x="${NW-10}" y="22" text-anchor="end">PLANNED</text>`:''}
+      ${d.in.map((p,i) => `<circle class="port" data-pin="${n.id}:${p.name}" cx="0" cy="${portY(i)}" r="7" fill="${PORT_COLOR[p.type]}"></circle>
+        <text class="plabel" x="14" y="${portY(i)+4}">${p.label}</text>`).join('')}
+      ${d.out.map((p,i) => `<circle class="port" data-pout="${n.id}:${p.name}" cx="${NW}" cy="${portY(i)}" r="7" fill="${PORT_COLOR[p.type]}"></circle>
+        <text class="plabel" x="${NW-14}" y="${portY(i)+4}" text-anchor="end">${p.label}</text>`).join('')}
+    </g>`; }).join('');
+  svg.innerHTML = `<defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="rgba(255,255,255,.06)"></circle></pattern></defs>
+    <rect width="100%" height="100%" fill="url(#grid)" data-bg="1"></rect>
+    <g transform="translate(${nview.x},${nview.y}) scale(${nview.k})">${wires}${pend}${nodes}</g>`;
+}
+
+/* -------------------------------------------------------------- graph editor */
+let gChannel = null, gActiveKey = null, gGeom = null;
+function renderGraphEd() {
+  const node = S.graph.nodes.find(n => n.id === S.sel.nodes[0]);
+  const chans = node ? Object.keys(node.anim).filter(k => node.anim[k] && node.anim[k].length) : [];
+  const cur = node && chans.includes(gChannel) ? gChannel : chans[0] || null;
+  gChannel = cur;
+  $('#chans').innerHTML = `<span class="eyebrow">Curves</span>` +
+    (!node ? `<p class="hint">Select a node to edit its animation.</p>` : '') +
+    (node && !chans.length ? `<p class="hint">No animated parameters yet. Tap ◆ beside a value in the Inspector.</p>` : '') +
+    chans.map(c => `<button class="chan ${c===cur?'on':''}" data-act="chan" data-id="${c}">
+        <i></i>${c}<span>${sampleKeys(node.anim[c], T.time).toFixed(2)}</span></button>`).join('') +
+    (cur && gActiveKey !== null && node.anim[cur][gActiveKey] ? `
+      <label class="field"><span>Ease</span>
+        <select class="select" data-in="ease">
+          ${['linear','easeIn','easeOut','easeInOut','spring','hold'].map(e =>
+            `<option ${node.anim[cur][gActiveKey].ease===e?'selected':''}>${e}</option>`).join('')}
+        </select></label>
+      <button class="chip" data-act="keydel">Delete key</button>` : '');
+
+  const svg = $('#gsvg'), r = svg.getBoundingClientRect();
+  const w = r.width || 600, h = r.height || 170, PAD = { l:14, r:14, t:12, b:16 };
+  const keys = cur ? node.anim[cur] : [];
+  const [mn, mx] = valueRange(keys);
+  const pw = w - PAD.l - PAD.r, ph = h - PAD.t - PAD.b;
+  const tToX = t => PAD.l + (t / S.meta.duration) * pw;
+  const vToY = v => PAD.t + ph - ((v - mn) / ((mx - mn) || 1)) * ph;
+  gGeom = { tToX, vToY, PAD, pw, ph, mn, mx,
+    xToT: x => clamp(((x - PAD.l)/pw) * S.meta.duration, 0, S.meta.duration),
+    yToV: y => mn + ((PAD.t + ph - y)/ph) * ((mx - mn) || 1) };
+  let path = '';
+  if (keys.length) { const pts = [];
+    for (let i = 0; i <= 160; i++) { const t = (S.meta.duration*i)/160; pts.push((i?'L':'M') + tToX(t).toFixed(1) + ' ' + vToY(sampleKeys(keys,t)).toFixed(1)); }
+    path = pts.join(' '); }
+  svg.innerHTML = [0,.25,.5,.75,1].map(f =>
+      `<line class="gline" x1="${PAD.l}" x2="${w-PAD.r}" y1="${PAD.t+ph*f}" y2="${PAD.t+ph*f}"></line>`).join('') +
+    `<path class="curve" d="${path}"></path>` +
+    keys.map((k,i) => `<circle class="key ${gActiveKey===i?'on':''}" data-key="${i}" cx="${tToX(k.t)}" cy="${vToY(k.v)}" r="${isPhone()?7:5}"></circle>`).join('') +
+    `<line class="gph" id="gph" x1="${tToX(T.time)}" x2="${tToX(T.time)}" y1="${PAD.t}" y2="${PAD.t+ph}"></line>`;
+}
+
+/* ------------------------------------------------------------------ 3D bars */
+function render3DBars() {
+  $('#bar3d').innerHTML =
+    `<div class="grp3">` + ['cube','sphere','plane','cylinder','cone','torus','text3d'].map(k =>
+      `<button class="chip" data-act="prim" data-id="${k}">${k==='text3d'?'text*':k}</button>`).join('') + `</div>` +
+    `<div class="grp3">` + ['orbit','move','rotate','scale'].map(m =>
+      `<button class="chip ${V3D.mode===m?'on':''}" data-act="mode3d" data-id="${m}">${m}</button>`).join('') +
+      `<button class="chip" data-act="del3dsel" ${S.sel.objects.length?'':'disabled'}>Delete</button></div>` +
+    `<div class="grp3">` + ['material','solid','wireframe'].map(s =>
+      `<button class="chip ${V3D.shade===s?'on':''}" data-act="shade3d" data-id="${s}">${s}</button>`).join('') +
+      `<button class="chip ${V3D.ortho?'on':''}" data-act="ortho">ortho</button>
+       <button class="chip" data-act="frame3d">frame</button></div>`;
+  $('#foot3d').innerHTML =
+    `<span>${S.scene.objects.length} objects</span>
+     <span>${S.sel.objects.length ? S.sel.objects.length + ' selected' : 'Tap an object to select'}</span>
+     <span class="muted">Drag to orbit · two fingers to pan and zoom · edit mode and modifiers are planned</span>`;
+}
+
+/* -------------------------------------------------------------------- toast */
+let toastT = 0;
+function toast(msg) {
+  const box = $('#toasts');
+  box.innerHTML = `<div class="toast">${esc(msg)}</div>`;
+  clearTimeout(toastT); toastT = setTimeout(() => box.innerHTML = '', 2200);
+}
+
+/* =============================================================== ui/modals */
+let modalKind = null, cmdText = '', cmdPlan = null;
+function renderModal() {
+  const m = $('#modals');
+  if (!modalKind) { m.innerHTML = ''; return; }
+  if (modalKind === 'cmd') {
+    m.innerHTML = `<div class="modal" data-act="closebg"><div class="sheetbox" data-stop="1">
+      <div class="mhead" style="border:0;padding-bottom:0">
+        <div><span class="cmd-mark">E.L.A.I.N.E.</span>
+          <div class="cmd-sub">Elegant Lazarus Artificial Intelligence Neural Entity</div></div>
+        <button class="ico" data-act="closemodal">✕</button></div>
+      <input id="cmdinput" placeholder="Describe what you want to create…" value="${esc(cmdText)}" autocomplete="off">
+      <div id="cmdPlan"></div>
+      <p class="mfoot">Running the on-device rule planner. Generative nodes — text-to-image, upscaling,
+        rotoscoping, voice — are registered in the node list and marked Planned until their runtimes ship.</p>
+    </div></div>`;
+    renderCmdPlan();
+    setTimeout(() => { const i = $('#cmdinput'); if (i && !isPhone()) i.focus(); }, 30);
+  } else {
+    const p = PRESETS.find(x => x.id === exState.preset);
+    const secs = Math.max(0, exState.end - exState.start);
+    const size = p.mbps ? fmtBytes(p.mbps*1e6*secs/8) : fmtBytes(p.w*p.h*4);
+    m.innerHTML = `<div class="modal" data-act="closebg"><div class="sheetbox" data-stop="1">
+      <div class="mhead"><h2>Export</h2><button class="ico" data-act="closemodal">✕</button></div>
+      <div class="exbody">
+        <div class="presets"><span class="eyebrow">Presets</span>
+          ${PRESETS.map(x => `<button class="preset ${x.id===exState.preset?'on':''}" data-act="preset" data-id="${x.id}">
+            <b>${x.label}</b><span>${x.w}×${x.h} · ${x.fps} fps</span></button>`).join('')}
+          <span class="eyebrow">Planned formats</span>
+          ${PLANNED_FMT.map(([a,b]) => `<div class="preset plan"><b>${a}</b><span>${b}</span></div>`).join('')}
+        </div>
+        <div class="exset">
+          <div class="field"><span>Render range (seconds)</span><div class="rowx">
+            <input class="input num" type="number" data-in="exnum" data-k="start" min="0" step="0.1" value="${exState.start}">
+            <input class="input num" type="number" data-in="exnum" data-k="end" min="0" step="0.1" value="${exState.end}">
+          </div></div>
+          <label class="field row"><span>Include audio</span>
+            <input type="checkbox" data-in="exaudio" ${exState.audio?'checked':''}></label>
+          <dl class="stats">
+            <div><dt>Resolution</dt><dd>${p.w}×${p.h}</dd></div>
+            <div><dt>Frame rate</dt><dd>${p.fps} fps</dd></div>
+            <div><dt>Codec</dt><dd>${p.fmt==='webm'?'VP9 (WebM)':p.fmt.toUpperCase()}</dd></div>
+            <div><dt>Estimated size</dt><dd>${size}</dd></div>
+            <div><dt>Estimated time</dt><dd>${p.fmt==='webm'?secs.toFixed(1)+'s (real time)':'Fast'}</dd></div>
+          </dl>
+          <div id="exProg" class="field" hidden><div class="bar2"><i></i></div><span></span></div>
+          <p class="hint">WebM records the live GPU composite in real time — keep this tab in front while it runs.</p>
+          <div class="exact"><button class="btn" data-act="excancel">Cancel</button>
+            <button class="btn primary" data-act="exrun">Start export</button></div>
+        </div>
+      </div></div></div>`;
+  }
+}
+function renderCmdPlan() {
+  const box = $('#cmdPlan'); if (!box) return;
+  if (!cmdText.trim()) { cmdPlan = null;
+    box.innerHTML = `<div class="sugg">${SUGGESTIONS.map(s =>
+      `<button data-act="sugg" data-q="${esc(s)}" data-keep="1">${esc(s)}</button>`).join('')}</div>`;
+    return; }
+  cmdPlan = interpret(cmdText);
+  box.innerHTML = `<div class="plan">
+    <b>${esc(cmdPlan.title)}</b>
+    <div class="hint">${cmdPlan.steps.length} steps — every one stays editable</div>
+    <ol>${cmdPlan.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+    <button class="btn primary" data-act="planrun">Build it</button></div>`;
+}
+
+/* ============================================================== ui/actions */
+function act(a, d, ev) {
+  switch (a) {
+    case 'ws': S.ws = d.id; if (d.id === 'model') S.ui.mob = '3d';
+      else if (d.id === 'node' || d.id === 'ai') S.ui.mob = 'nodes'; render(); break;
+    case 'mob':
+      if (d.id === 'media') { $('#pLeft').classList.add('open'); break; }
+      S.ui.mob = d.id;
+      if (d.id === 'nodes') S.ws = 'node';
+      else if (d.id === '3d') S.ws = 'model';
+      else if (S.ws === 'model' || S.ws === 'material' || S.ws === 'node' || S.ws === 'ai') S.ws = 'edit';
+      render(); break;
+    case 'sheet': $(d.side === 'left' ? '#pLeft' : '#pRight').classList.toggle('open'); break;
+    case 'closesheet': $('#pLeft').classList.remove('open'); $('#pRight').classList.remove('open'); break;
+    case 'cmd': modalKind = 'cmd'; cmdText = ''; renderModal(); break;
+    case 'export': modalKind = 'export'; exState.end = Math.min(S.meta.duration, contentDur() || S.meta.duration); renderModal(); break;
+    case 'closemodal': modalKind = null; renderModal(); break;
+    case 'closebg': if (ev.target.closest('[data-stop]')) return; modalKind = null; renderModal(); break;
+    case 'undo': undo(); break;
+    case 'redo': redo(); break;
+    case 'save': saveFile(); break;
+    case 'open': $('#projInput').click(); break;
+    case 'import': $('#fileInput').click(); break;
+    case 'recover': try { deserialize(localStorage.getItem(AUTOSAVE)); render(); toast('Session restored'); }
+      catch (e) { toast('Autosave could not be read'); } break;
+    case 'bintab': S.ui.bin = d.id; renderBin(); break;
+    case 'play': togglePlay(); break;
+    case 'step': stepFrames(+d.n); break;
+    case 'loop': T.loop = !T.loop; syncTransportUI(); break;
+    case 'guides': showGuides = !showGuides; syncTransportUI(); break;
+    case 'addclip': { const a2 = S.media.find(m => m.id === d.id); if (!a2) break;
+      const kind = a2.kind === 'audio' ? 'audio' : 'video';
+      const tr = S.tracks.find(t => t.kind === kind) || S.tracks[0];
+      addClipFromAsset(a2, tr.id, contentDur());
+      if (isPhone()) { S.ui.mob = 'edit'; render(); $('#pLeft').classList.remove('open'); }
+      toast('Added to ' + tr.name); break; }
+    case 'split': splitAt(T.time); break;
+    case 'ripple': deleteClips(S.sel.clips, true); break;
+    case 'delclip': deleteClips([d.id], false); break;
+    case 'marker': edit('Add marker', s => s.markers.push({ id:uid('mk'), time:T.time,
+        label:'Marker ' + (s.markers.length+1), color:'#ff2d8a' })); break;
+    case 'snap': S.ui.snap = !S.ui.snap; render(); break;
+    case 'graphtoggle': S.ui.graphOpen = !S.ui.graphOpen; render(); break;
+    case 'addtrack': addTrack(d.id); break;
+    case 'tflag': edit('Toggle track', s => { const t = s.tracks.find(t => t.id === d.id); if (t) t[d.k] = !t[d.k]; }); break;
+    case 'palette': paletteOpen = !paletteOpen; paletteQ = ''; renderNodesBar();
+      setTimeout(() => { const i = $('#palInput'); if (i && !isPhone()) i.focus(); }, 20); break;
+    case 'palitem': { const svg = $('#nodesvg').getBoundingClientRect();
+      const x = (svg.width*.28 - nview.x)/nview.k + Math.random()*40;
+      const y = (svg.height*.34 - nview.y)/nview.k + Math.random()*40;
+      const n = createNode(d.id, x, y);
+      edit('Add node', s => { s.graph.nodes.push(n); s.sel.nodes = [n.id]; s.sel.clips = []; s.sel.objects = []; });
+      paletteOpen = false; renderNodesBar(); break; }
+    case 'delnode': { const ids = d.id ? [d.id] : S.sel.nodes; if (!ids.length) break;
+      edit('Delete nodes', s => { s.graph.nodes = s.graph.nodes.filter(n => !ids.includes(n.id));
+        s.graph.edges = s.graph.edges.filter(e => !ids.includes(e.from.node) && !ids.includes(e.to.node));
+        s.sel.nodes = []; }); break; }
+    case 'resetview': nview = { x:40, y:30, k:1 }; renderNodesSvg(); break;
+    case 'autolayout': edit('Tidy graph', s => { let i = 0;
+      const order = []; const out = s.graph.nodes.find(n => n.type === 'output');
+      const seen = new Set(); let cur = out;
+      while (cur && !seen.has(cur.id)) { seen.add(cur.id); order.unshift(cur);
+        const e = inEdge(cur.id); cur = e ? s.graph.nodes.find(n => n.id === e.from.node) : null; }
+      order.forEach(n => { n.x = 40 + i*250; n.y = 110 + (i%2)*80; i++; });
+      s.graph.nodes.filter(n => !seen.has(n.id)).forEach((n,j) => { n.x = 40 + j*250; n.y = 340; });
+    }); break;
+    case 'kf': { const node = S.graph.nodes.find(n => n.id === d.node); if (!node) break;
+      const on = !!(node.anim[d.p] && node.anim[d.p].length);
+      edit(on ? 'Remove animation' : 'Add keyframe', s => {
+        const n = s.graph.nodes.find(n => n.id === d.node);
+        if (on) delete n.anim[d.p];
+        else n.anim[d.p] = [{ t:T.time, v:+n.params[d.p] || 0, ease:'easeInOut' }];
+        s.ui.graphOpen = true; });
+      break; }
+    case 'chan': gChannel = d.id; gActiveKey = null; renderGraphEd(); break;
+    case 'keydel': { const n = S.graph.nodes.find(n => n.id === S.sel.nodes[0]);
+      if (!n || !gChannel || gActiveKey === null) break;
+      const t = n.anim[gChannel][gActiveKey].t;
+      edit('Delete keyframe', s => { const nn = s.graph.nodes.find(x => x.id === n.id);
+        nn.anim[gChannel] = removeKey(nn.anim[gChannel], t);
+        if (!nn.anim[gChannel].length) delete nn.anim[gChannel]; });
+      gActiveKey = null; break; }
+    case 'prim': addPrimitive(d.id); if (isPhone()) { S.ui.mob = '3d'; S.ws = 'model'; $('#pLeft').classList.remove('open'); render(); } break;
+    case 'selobj': selectObjects([d.id]); break;
+    case 'del3d': deleteObjects([d.id]); break;
+    case 'del3dsel': deleteObjects(S.sel.objects); break;
+    case 'dup3d': duplicateObject(d.id); break;
+    case 'mode3d': V3D.mode = d.id; render3DBars(); break;
+    case 'shade3d': V3D.shade = d.id; render3DBars(); break;
+    case 'ortho': V3D.ortho = !V3D.ortho; V3D.cam.dist = V3D.ortho ? 26 : 9; render3DBars(); break;
+    case 'frame3d': { const o = S.scene.objects.find(o => o.id === S.sel.objects[0]);
+      V3D.cam.target = o ? o.position.slice() : [0,.7,0]; V3D.cam.dist = o ? 5 : 9; break; }
+    case 'sugg': cmdText = d.q;
+      if (d.keep) { const i = $('#cmdinput'); if (i) i.value = d.q; renderCmdPlan(); }
+      else { const plan = interpret(d.q); plan.apply(); toast('E.L.A.I.N.E. — ' + plan.title);
+        if (isPhone()) $('#pLeft').classList.remove('open'); }
+      break;
+    case 'planrun': if (cmdPlan) { cmdPlan.apply(); toast('E.L.A.I.N.E. — ' + cmdPlan.title); }
+      modalKind = null; renderModal(); break;
+    case 'preset': exState.preset = d.id; renderModal(); break;
+    case 'exrun': runExport(); break;
+    case 'excancel': exCancel = true; break;
+  }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (b) { act(b.dataset.act, b.dataset, e); return; }
+  /* tapping the dimmed area closes an open side sheet on small screens */
+  if (isTablet() && !e.target.closest('.panel') && !e.target.closest('.sheetbtn'))
+    document.querySelectorAll('.panel.open').forEach(p => p.classList.remove('open'));
+});
+
+/* ------------------------------------------------------------- ui/inputs */
+let inputTx = false;
+function onInput(t, done) {
+  const k = t.dataset.in;
+  const num = t.type === 'range' || t.type === 'number';
+  const v = t.type === 'checkbox' ? t.checked : num ? parseFloat(t.value) : t.value;
+  if (k === 'exnum') { exState[t.dataset.k] = v; renderModal(); return; }
+  if (k === 'exaudio') { exState.audio = v; return; }
+  if (k === 'cmdq') { cmdText = t.value; renderCmdPlan(); return; }
+  if (k === 'palq') { paletteQ = t.value; renderNodesBar();
+    const i = $('#palInput'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } return; }
+  if (k === 'pps') { S.ui.pps = v; renderLanes(); paintPlayhead(); return; }
+
+  if (!done && !inputTx) { begin(); inputTx = true; }
+  const label = { nparam:'Set parameter', clip:'Edit clip', obj:'Transform object',
+                  mat:'Edit material', bypass:'Bypass node', pname:'Rename project',
+                  pmeta:'Project settings', ease:'Set easing' }[k] || 'Edit';
+  edit(label, s => {
+    if (k === 'nparam') { const n = s.graph.nodes.find(n => n.id === t.dataset.node); if (!n) return;
+      const p = t.dataset.p;
+      if (n.anim[p] && n.anim[p].length) n.anim[p] = insertKey(n.anim[p], { t:T.time, v, ease:'easeInOut' });
+      else n.params[p] = v; }
+    else if (k === 'bypass') { const n = s.graph.nodes.find(n => n.id === t.dataset.node); if (n) n.bypass = v; }
+    else if (k === 'clip') { const c = allClips().find(c => c.id === t.dataset.id); if (c) c[t.dataset.k] = v; }
+    else if (k === 'obj') { const o = s.scene.objects.find(o => o.id === t.dataset.id);
+      if (o) o[t.dataset.k][+t.dataset.axis] = v; }
+    else if (k === 'mat') { const o = s.scene.objects.find(o => o.id === t.dataset.id);
+      if (o) o.material[t.dataset.k] = v; }
+    else if (k === 'pname') s.meta.name = v;
+    else if (k === 'pmeta') s.meta[t.dataset.k] = Math.max(1, v);
+    else if (k === 'ease') { const n = s.graph.nodes.find(n => n.id === s.sel.nodes[0]);
+      if (n && gChannel && gActiveKey !== null) n.anim[gChannel][gActiveKey].ease = v; }
+  }, true);
+
+  if (done) { if (inputTx) { commit(label); inputTx = false; } else render(); }
+  else { const box = t.closest('.param'); if (box && typeof v === 'number') {
+    const val = box.querySelector('.val'); if (val) val.textContent = v.toFixed(2); } }
+}
+document.addEventListener('input', e => { const t = e.target.closest('[data-in]'); if (t) onInput(t, false); });
+document.addEventListener('change', e => { const t = e.target.closest('[data-in]'); if (t) onInput(t, true); });
+document.addEventListener('input', e => {
+  if (e.target.id === 'cmdinput') { cmdText = e.target.value; renderCmdPlan(); }
+  if (e.target.id === 'palInput') { paletteQ = e.target.value;
+    const pos = e.target.selectionStart; renderNodesBar();
+    const i = $('#palInput'); if (i) { i.focus(); i.setSelectionRange(pos, pos); } }
+});
+$('#scrub').addEventListener('input', e => seek(+e.target.value));
+$('#qualitySel').addEventListener('change', () => status('Preview quality ' + $('#qualitySel').selectedOptions[0].text));
+$('#fileInput').addEventListener('change', async e => {
+  const files = Array.from(e.target.files || []); if (!files.length) return;
+  const added = [];
+  for (const f of files) { try { added.push(await importFile(f)); }
+    catch (err) { toast(f.name + ' — ' + err.message); } }
+  if (added.length) { edit('Import media', s => s.media.push(...added)); toast('Imported ' + added.length + ' file(s)'); }
+  e.target.value = '';
+});
+$('#projInput').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { deserialize(await f.text()); render(); toast('Project loaded'); }
+  catch (err) { toast(err.message); }
+  e.target.value = '';
+});
+
+/* =========================================================== ui/interaction
+   Everything below uses pointer events, so mouse, pen and touch share one
+   path. Drags write to the DOM directly and only commit to history on release. */
+function selectQuiet(kind, id, add) {
+  if (kind === 'clip') { S.sel.clips = add ? Array.from(new Set(S.sel.clips.concat([id]))) : [id]; S.sel.nodes = []; S.sel.objects = []; }
+  if (kind === 'node') { S.sel.nodes = [id]; S.sel.clips = []; S.sel.objects = []; gActiveKey = null; }
+  document.querySelectorAll('.clip').forEach(el => el.classList.toggle('sel', S.sel.clips.includes(el.dataset.clip)));
+  document.querySelectorAll('.node').forEach(el => el.classList.toggle('sel', S.sel.nodes.includes(el.dataset.node)));
+  renderInspector(); renderGraphEd(); renderNodesBar(); renderTBar();
+}
+
+/* ---- timeline ---- */
+const lanes = $('#lanes');
+const laneTime = clientX => {
+  const r = lanes.getBoundingClientRect();
+  return clamp((clientX - r.left + lanes.scrollLeft) / S.ui.pps, 0, S.meta.duration);
+};
+lanes.addEventListener('pointerdown', e => {
+  if (e.target.closest('.ruler')) {
+    e.preventDefault(); seek(laneTime(e.clientX));
+    const mv = ev => seek(laneTime(ev.clientX));
+    const up = () => window.removeEventListener('pointermove', mv);
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up, { once:true });
+    return;
+  }
+  const el = e.target.closest('.clip'); if (!el) return;
+  e.preventDefault();
+  const id = el.dataset.clip, clip = findClip(id); if (!clip) return;
+  selectQuiet('clip', id, e.shiftKey && !e.target.closest('.h'));
+  const mode = e.target.classList.contains('l') ? 'tl' : e.target.classList.contains('r') ? 'tr'
+             : e.shiftKey ? 'slip' : 'move';
+  const x0 = e.clientX, s0 = clip.start, d0 = clip.duration, tr0 = clip.trackId;
+  const pts = S.ui.snap ? snapPoints(id) : [], tol = SNAP_PX / S.ui.pps;
+  const guide = $('#snapline');
+  begin(); dragging = true;
+  const mv = ev => {
+    const dx = (ev.clientX - x0) / S.ui.pps;
+    if (mode === 'move') {
+      let st = Math.max(0, s0 + dx);
+      const a = applySnap(st, pts, tol), b = applySnap(st + d0, pts, tol) - d0;
+      const useB = Math.abs(b - st) < Math.abs(a - st), ns = useB ? b : a;
+      if (guide) { if (Math.abs(ns - st) > 1e-6) { guide.hidden = false;
+        guide.style.left = ((useB ? ns + d0 : ns) * S.ui.pps) + 'px'; } else guide.hidden = true; }
+      st = ns;
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+      const lane = hit && hit.closest ? hit.closest('[data-track]') : null;
+      const target = lane ? lane.dataset.track : tr0;
+      moveClip(id, st, target, true);
+      el.style.left = (findClip(id).start * S.ui.pps) + 'px';
+      if (lane && lane !== el.parentElement) { lane.appendChild(el);
+        el.style.setProperty('--acc', KIND_ACC[trackOf(target).kind]); }
+    } else if (mode === 'slip') { slipClip(id, -dx * .5, true); }
+    else if (mode === 'tl') { trimClip(id, 'start', applySnap(s0 + dx, pts, tol), true);
+      const c = findClip(id); el.style.left = (c.start*S.ui.pps)+'px'; el.style.width = Math.max(6, c.duration*S.ui.pps)+'px'; }
+    else { trimClip(id, 'end', applySnap(s0 + d0 + dx, pts, tol), true);
+      el.style.width = Math.max(6, findClip(id).duration*S.ui.pps) + 'px'; }
+  };
+  const up = () => { window.removeEventListener('pointermove', mv); dragging = false;
+    if (guide) guide.hidden = true;
+    commit(mode === 'move' ? 'Move clip' : mode === 'slip' ? 'Slip clip' : 'Trim clip'); };
+  window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up, { once:true });
+});
+lanes.addEventListener('dragover', e => e.preventDefault());
+lanes.addEventListener('drop', e => {
+  e.preventDefault();
+  const id = e.dataTransfer.getData('text/x-eternalnode-asset');
+  const asset = S.media.find(m => m.id === id);
+  const lane = e.target.closest('[data-track]');
+  if (asset && lane) addClipFromAsset(asset, lane.dataset.track, laneTime(e.clientX));
+});
+document.addEventListener('dragstart', e => { const li = e.target.closest('[data-asset]');
+  if (li) e.dataTransfer.setData('text/x-eternalnode-asset', li.dataset.asset); });
+/* pinch to zoom the timeline */
+(() => { const pts = new Map(); let base = 0, basePps = 0;
+  lanes.addEventListener('pointerdown', e => pts.set(e.pointerId, e));
+  lanes.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e);
+    if (pts.size !== 2) return;
+    const [a,b] = [...pts.values()], d = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+    if (!base) { base = d; basePps = S.ui.pps; return; }
+    S.ui.pps = clamp(basePps * d/base, 16, 400); renderLanes(); paintPlayhead();
+  });
+  const clear = e => { pts.delete(e.pointerId); if (pts.size < 2) base = 0; };
+  lanes.addEventListener('pointerup', clear); lanes.addEventListener('pointercancel', clear);
+})();
+
+/* ---- node editor ---- */
+const nsvg = $('#nodesvg');
+const nodePt = (cx, cy) => { const r = nsvg.getBoundingClientRect();
+  return { x:(cx - r.left - nview.x)/nview.k, y:(cy - r.top - nview.y)/nview.k }; };
+nsvg.addEventListener('pointerdown', e => {
+  const out = e.target.closest('[data-pout]');
+  if (out) { e.preventDefault();
+    const [nid, port] = out.dataset.pout.split(':');
+    const d = NODE_MAP[S.graph.nodes.find(n => n.id === nid).type];
+    const p = nodePt(e.clientX, e.clientY);
+    pending = { from:{ node:nid, port }, type:(d.out.find(x => x.name === port)||{}).type || 'video', x:p.x, y:p.y };
+    const mv = ev => { const q = nodePt(ev.clientX, ev.clientY); pending.x = q.x; pending.y = q.y; renderNodesSvg(); };
+    const up = ev => { window.removeEventListener('pointermove', mv);
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+      const tgt = hit && hit.closest ? hit.closest('[data-pin]') : null;
+      if (tgt) { const [tn, tp] = tgt.dataset.pin.split(':');
+        if (canConnect(pending.from, { node:tn, port:tp })) {
+          const from = pending.from;
+          edit('Connect nodes', s => { s.graph.edges = s.graph.edges.filter(x => !(x.to.node === tn && x.to.port === tp));
+            s.graph.edges.push({ id:uid('edg'), from, to:{ node:tn, port:tp } }); });
+        } else toast('Those ports cannot be connected');
+      }
+      pending = null; renderNodesSvg(); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up, { once:true });
+    return; }
+
+  const g = e.target.closest('[data-node]');
+  if (g) { e.preventDefault();
+    const id = g.dataset.node, node = S.graph.nodes.find(n => n.id === id);
+    selectQuiet('node', id);
+    const p0 = nodePt(e.clientX, e.clientY), dx = p0.x - node.x, dy = p0.y - node.y;
+    begin(); dragging = true;
+    const mv = ev => { const p = nodePt(ev.clientX, ev.clientY);
+      node.x = p.x - dx; node.y = p.y - dy; g.setAttribute('transform', `translate(${node.x},${node.y})`);
+      const wires = nsvg.querySelectorAll('.wire'); if (wires.length) renderWires(); };
+    const up = () => { window.removeEventListener('pointermove', mv); dragging = false; commit('Move node'); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up, { once:true });
+    return; }
+
+  const edge = e.target.closest('[data-edge]');
+  if (edge && e.detail === 2) { const id = edge.dataset.edge;
+    edit('Disconnect', s => s.graph.edges = s.graph.edges.filter(x => x.id !== id)); return; }
+
+  /* background pan */
+  const x0 = e.clientX, y0 = e.clientY, v0 = { ...nview };
+  S.sel.nodes = []; renderInspector();
+  const mv = ev => { nview.x = v0.x + (ev.clientX - x0); nview.y = v0.y + (ev.clientY - y0);
+    nsvg.querySelector('g').setAttribute('transform', `translate(${nview.x},${nview.y}) scale(${nview.k})`); };
+  const up = () => window.removeEventListener('pointermove', mv);
+  window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up, { once:true });
+});
+function renderWires() { /* cheap wire refresh while a node is being dragged */
+  S.graph.edges.forEach(e => {
+    const path = nsvg.querySelector(`[data-edge="${e.id}"]`); if (!path) return;
+    const a = S.graph.nodes.find(n => n.id === e.from.node), b = S.graph.nodes.find(n => n.id === e.to.node);
+    const oi = NODE_MAP[a.type].out.findIndex(p => p.name === e.from.port);
+    const ii = NODE_MAP[b.type].in.findIndex(p => p.name === e.to.port);
+    path.setAttribute('d', wire(a.x+NW, a.y+portY(oi), b.x, b.y+portY(ii)));
+  });
+}
+nsvg.addEventListener('wheel', e => { e.preventDefault();
+  nview.k = clamp(nview.k * (e.deltaY < 0 ? 1.1 : .9), .3, 2.6); renderNodesSvg(); }, { passive:false });
+(() => { const pts = new Map(); let base = 0, k0 = 1;
+  nsvg.addEventListener('pointerdown', e => pts.set(e.pointerId, e));
+  nsvg.addEventListener('pointermove', e => { if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e);
+    if (pts.size !== 2) return;
+    const [a,b] = [...pts.values()], d = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+    if (!base) { base = d; k0 = nview.k; return; }
+    nview.k = clamp(k0 * d/base, .3, 2.6); renderNodesSvg(); });
+  const clear = e => { pts.delete(e.pointerId); if (pts.size < 2) base = 0; };
+  nsvg.addEventListener('pointerup', clear); nsvg.addEventListener('pointercancel', clear);
+})();
+
+/* ---- graph editor ---- */
+const gsvg = $('#gsvg');
+gsvg.addEventListener('pointerdown', e => {
+  const node = S.graph.nodes.find(n => n.id === S.sel.nodes[0]);
+  if (!node || !gChannel || !gGeom) return;
+  const r = gsvg.getBoundingClientRect();
+  const keyEl = e.target.closest('[data-key]');
+  if (keyEl) { e.preventDefault();
+    const i = +keyEl.dataset.key; gActiveKey = i; begin(); dragging = true;
+    const mv = ev => { const t = gGeom.xToT(ev.clientX - r.left), v = gGeom.yToV(ev.clientY - r.top);
+      node.anim[gChannel][i].t = t; node.anim[gChannel][i].v = v;
+      node.anim[gChannel].sort((a,b) => a.t - b.t);
+      keyEl.setAttribute('cx', gGeom.tToX(t)); keyEl.setAttribute('cy', gGeom.vToY(v)); };
+    const up = () => { window.removeEventListener('pointermove', mv); dragging = false; commit('Move keyframe'); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up, { once:true });
+    return; }
+  const t = gGeom.xToT(e.clientX - r.left), v = gGeom.yToV(e.clientY - r.top);
+  edit('Add keyframe', s => { const n = s.graph.nodes.find(n => n.id === node.id);
+    n.anim[gChannel] = insertKey(n.anim[gChannel], { t, v, ease:'easeInOut' }); });
+});
+
+/* ---- 3D viewport ---- */
+const c3d = $('#c3d');
+(() => {
+  const pts = new Map(); let base = 0, dist0 = 0, mid0 = null, moved = false;
+  c3d.addEventListener('pointerdown', e => {
+    e.preventDefault(); pts.set(e.pointerId, e); moved = false;
+    if (pts.size > 1) return;
+    const x0 = e.clientX, y0 = e.clientY;
+    const obj = S.scene.objects.find(o => o.id === S.sel.objects[0]);
+    const manipulate = V3D.mode !== 'orbit' && obj;
+    const start = manipulate ? { p:obj.position.slice(), r:obj.rotation.slice(), s:obj.scale.slice() } : null;
+    if (manipulate) begin();
+    const az0 = V3D.cam.az, el0 = V3D.cam.el;
+    const mv = ev => {
+      if (pts.size > 1) return;
+      const dx = ev.clientX - x0, dy = ev.clientY - y0;
+      if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+      if (manipulate) {
+        const k = V3D.cam.dist * .0022;
+        if (V3D.mode === 'move') {
+          const az = V3D.cam.az;
+          obj.position[0] = start.p[0] + (dx*Math.cos(az) * k) + 0;
+          obj.position[2] = start.p[2] - (dx*Math.sin(az) * k);
+          obj.position[1] = Math.max(0, start.p[1] - dy*k);
+        } else if (V3D.mode === 'rotate') {
+          obj.rotation[1] = start.r[1] + dx*.01; obj.rotation[0] = start.r[0] + dy*.01;
+        } else { const f = clamp(1 + dx*.005, .05, 20);
+          obj.scale = [start.s[0]*f, start.s[1]*f, start.s[2]*f]; }
+      } else { V3D.cam.az = az0 - dx*.008; V3D.cam.el = clamp(el0 + dy*.008, -1.45, 1.45); }
+    };
+    const up = ev => { window.removeEventListener('pointermove', mv); pts.delete(ev.pointerId);
+      if (manipulate) commit(V3D.mode === 'move' ? 'Move object' : V3D.mode === 'rotate' ? 'Rotate object' : 'Scale object');
+      else if (!moved) { const hit = V3D.pick(ev.clientX, ev.clientY); selectObjects(hit ? [hit] : []); } };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up, { once:true });
+  });
+  c3d.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e);
+    if (pts.size !== 2) return;
+    const [a,b] = [...pts.values()];
+    const d = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+    const mid = { x:(a.clientX+b.clientX)/2, y:(a.clientY+b.clientY)/2 };
+    if (!base) { base = d; dist0 = V3D.cam.dist; mid0 = mid; return; }
+    V3D.cam.dist = clamp(dist0 * base/d, 1.2, 90);
+    const k = V3D.cam.dist * .002, az = V3D.cam.az;
+    V3D.cam.target[0] -= (mid.x - mid0.x)*k*Math.cos(az);
+    V3D.cam.target[2] += (mid.x - mid0.x)*k*Math.sin(az);
+    V3D.cam.target[1] += (mid.y - mid0.y)*k;
+    mid0 = mid;
+  });
+  const clear = e => { pts.delete(e.pointerId); if (pts.size < 2) base = 0; };
+  c3d.addEventListener('pointerup', clear); c3d.addEventListener('pointercancel', clear);
+  c3d.addEventListener('wheel', e => { e.preventDefault();
+    V3D.cam.dist = clamp(V3D.cam.dist * (e.deltaY > 0 ? 1.1 : .9), 1.2, 90); }, { passive:false });
+})();
+
+/* ---- panel splitters ---- */
+function gripDrag(el, apply) {
+  el.addEventListener('pointerdown', e => { e.preventDefault(); el.classList.add('drag');
+    const mv = ev => apply(ev); 
+    const up = () => { window.removeEventListener('pointermove', mv); el.classList.remove('drag');
+      localStorage.setItem(LAYOUT, JSON.stringify({
+        left:getComputedStyle(document.documentElement).getPropertyValue('--left'),
+        right:getComputedStyle(document.documentElement).getPropertyValue('--right'),
+        bottom:getComputedStyle(document.documentElement).getPropertyValue('--bottom') })); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up, { once:true }); });
+}
+const setVar = (k, v) => document.documentElement.style.setProperty(k, v + 'px');
+gripDrag($('#gripL'), e => setVar('--left', clamp(e.clientX, 200, 460)));
+gripDrag($('#gripR'), e => setVar('--right', clamp(innerWidth - e.clientX, 230, 480)));
+gripDrag($('#gripB'), e => { const r = $('#center').getBoundingClientRect();
+  setVar('--bottom', clamp(r.bottom - e.clientY, 140, r.height - 160)); if (V3D.ready) V3D.resize(); });
+
+/* ---- keyboard ---- */
+addEventListener('keydown', e => {
+  const typing = /input|textarea|select/i.test(e.target.tagName);
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); act('cmd', {}); return; }
+  if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveFile(); return; }
+  if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (e.key === 'Escape') { if (modalKind) { modalKind = null; renderModal(); }
+    else if (paletteOpen) { paletteOpen = false; renderNodesBar(); } return; }
+  if (typing || modalKind) return;
+  switch (e.key) {
+    case ' ': e.preventDefault(); togglePlay(); break;
+    case 'ArrowLeft': stepFrames(e.shiftKey ? -10 : -1); break;
+    case 'ArrowRight': stepFrames(e.shiftKey ? 10 : 1); break;
+    case 's': case 'S': splitAt(T.time); break;
+    case 'm': case 'M': act('marker', {}); break;
+    case 'n': case 'N': act('snap', {}); break;
+    case 'Delete': case 'Backspace':
+      if (S.sel.clips.length) deleteClips(S.sel.clips, e.shiftKey);
+      else if (S.sel.nodes.length) act('delnode', {});
+      else if (S.sel.objects.length) deleteObjects(S.sel.objects);
+      break;
+    case '1': act('ws', { id:'edit' }); break;
+    case '2': act('ws', { id:'node' }); break;
+    case '3': act('ws', { id:'model' }); break;
+    case '4': act('ws', { id:'animate' }); break;
+  }
+});
+addEventListener('resize', () => { layout(); renderGraphEd(); if (V3D.ready) V3D.resize(); });
+addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ==================================================================== boot */
+(function boot() {
+  try { const l = JSON.parse(localStorage.getItem(LAYOUT) || '{}');
+    for (const k of ['left','right','bottom']) if (l[k]) document.documentElement.style.setProperty('--' + k, l[k]);
+  } catch (err) {}
+
+  /* Seed a live chain so the first frame already flows through the graph. */
+  const src = createNode('source', 40, 140), out = createNode('output', 560, 140);
+  S.graph.nodes = [src, out];
+  S.graph.edges = [{ id:uid('edg'), from:{ node:src.id, port:'out' }, to:{ node:out.id, port:'in' } }];
+  S.ui.mob = isPhone() ? 'view' : 'view';
+  exState.end = S.meta.duration;
+
+  V3D.init();
+  renderNow();
+  status('Ready — import media, or press ⌘K and describe what you want');
+  if (isPhone()) toast('Tap Media to import, then Edit to build your timeline');
+})();
+</script>
+</body>
+</html>
