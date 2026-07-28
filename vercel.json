@@ -1,6 +1,6 @@
 {
-  "buildCommand": "cd eternalnode-studio && npm run build",
-  "devCommand": "cd eternalnode-studio && npm run dev",
-  "installCommand": "npm install --legacy-peer-deps",
-  "outputDirectory": "eternalnode-studio/dist"
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "outputDirectory": "eternalnode-studio/dist",
+  "installCommand": "cd eternalnode-studio && npm install"
 }
