@@ -1,6 +1,5 @@
 {
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
-  "outputDirectory": "eternalnode-studio/dist",
-  "installCommand": "cd eternalnode-studio && npm install"
+  "outputDirectory": "dist"
 }
