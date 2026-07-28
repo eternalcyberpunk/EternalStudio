@@ -1,0 +1,15 @@
+{
+  "name": "eternalstudio",
+  "version": "1.0.0",
+  "description": "EternalStudio - Edit Reality. Build Worlds.",
+  "private": true,
+  "scripts": {
+    "dev": "cd eternalnode-studio && npm run dev",
+    "build": "cd eternalnode-studio && npm install && npm run build",
+    "preview": "cd eternalnode-studio && npm run preview",
+    "typecheck": "cd eternalnode-studio && npm run typecheck"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
