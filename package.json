@@ -10,6 +10,6 @@
     "typecheck": "cd eternalnode-studio && npm run typecheck"
   },
   "engines": {
-    "node": "18.x"
+    "node": "24.x"
   }
 }
